@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+/screc
+Recording-*.mp4
+*.mp4
+.DS_Store
