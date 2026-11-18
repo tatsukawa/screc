@@ -24,9 +24,22 @@ is still recorded for the whole time.
 ## "there is no display N" or "no window matches …"
 
 Displays are numbered, and windows identified, as `screc --list` shows them. A window name only has to contain the
-text you give, ignoring case. When several windows match, screc records the front-most one and says so; give a
-window ID from `--list` to pick another.
+text you give, ignoring case, but it has to match exactly one window. A number is always taken as a window ID.
 Only windows that are on screen can be recorded, so a minimised window or one on another Space does not appear.
+
+## "N windows match …"
+
+The text given to `--window` occurs in the names of several windows. screc does not guess, because the wrong window may
+show something private. It lists the matching windows with their IDs; give the ID of the one you mean.
+
+## "the window you picked is no longer on screen" or "the display you picked is no longer connected"
+
+Between choosing in the picker and the start of the recording, the window was closed or minimised, or the display was
+disconnected. Start screc again and choose again.
+
+## The picker does not respond
+
+Press Ctrl+C in the terminal you started screc from. That ends screc and removes the dimmed overlay.
 
 ## "--region lies outside the display or is too small"
 
@@ -36,7 +49,16 @@ display, a point is two pixels. `screc --list` shows each display's size in poin
 
 ## "… already exists"
 
-screc never overwrites a file. Give another output name, or move the old file away.
+screc never overwrites a file. Give another output name, or move the old file away. If the name only gets taken while
+recording, the recording is saved under the next free name (`…-2.mp4`), and screc says so.
+
+## "cannot save the recording as …"
+
+The finished recording could not be moved to its name. Nothing is lost: the message says where the recording is.
+
+## Saving takes very long
+
+A second Ctrl+C aborts and discards the recording.
 
 ## "the recording was interrupted"
 

@@ -9,6 +9,8 @@ import CoreGraphics
 struct PickDisplay: Equatable {
     /// The number `--display` takes.
     let index: Int
+    /// The system's ID for the display, which stays the same when displays are connected or removed.
+    let id: CGDirectDisplayID
     /// Position among all displays, in the shared top-left-origin space.
     let frame: CGRect
     /// The same display's frame in AppKit's bottom-left-origin space, for placing windows on it.
@@ -30,24 +32,29 @@ struct PickMicrophone: Equatable {
 
 /// What the picker can hand to the recorder.
 enum PickTarget: Equatable {
-    case display(Int)
+    case display(PickDisplay)
     case window(CGWindowID)
     /// `rect` is relative to the top-left corner of the display.
-    case region(display: Int, rect: CGRect)
+    case region(PickDisplay, CGRect)
 }
 
 extension Options {
-    /// Replaces whatever was selected before with `target`.
+    /// Replaces whatever was selected before with `target`. Displays and windows are named by ID, so the recorder
+    /// either records exactly what was picked or reports that it has gone.
     mutating func select(_ target: PickTarget) {
         window = nil
+        windowID = nil
         region = nil
+        displayID = nil
         switch target {
-        case .display(let index):
-            display = index
+        case .display(let picked):
+            display = picked.index
+            displayID = picked.id
         case .window(let id):
-            window = String(id)
-        case .region(let index, let rect):
-            display = index
+            windowID = id
+        case .region(let picked, let rect):
+            display = picked.index
+            displayID = picked.id
             region = rect
         }
     }
@@ -110,13 +117,13 @@ struct PickerModel {
         switch mode {
         case .display:
             guard let display = hoveredDisplay else { return nil }
-            return PickSelection(target: .display(display.index), display: display, size: display.frame.size)
+            return PickSelection(target: .display(display), display: display, size: display.frame.size)
         case .window:
             guard let window = hoveredWindow, let display = hoveredDisplay else { return nil }
             return PickSelection(target: .window(window.id), display: display, size: window.frame.size)
         case .region:
             guard let region, let display = displays.first(where: { $0.index == region.display }) else { return nil }
-            return PickSelection(target: .region(display: region.display, rect: region.rect), display: display, size: region.rect.size)
+            return PickSelection(target: .region(display, region.rect), display: display, size: region.rect.size)
         }
     }
 

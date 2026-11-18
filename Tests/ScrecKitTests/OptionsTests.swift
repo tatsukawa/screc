@@ -78,6 +78,18 @@ final class OptionsTests: XCTestCase {
             ["--bogus"],
             ["a.mp4", "b.mp4"],  // two outputs
             ["--window", "x", "--region", "0,0,10,10"],  // both a window and a region
+            ["--region", "10,typo,20,300,200"],  // a typo must not silently drop a field
+            ["--region", "10,,20,300"],  // an empty field
+            ["--region", "1,2,3,4,5"],  // too many numbers
+            ["--region", "inf,0,10,10"],
+            ["--region", "0,0,nan,10"],
+            ["--duration", "inf"],  // the timer cannot represent it
+            ["--duration", "nan"],
+            ["--duration", "1e300"],
+            ["--duration", "604801"],  // more than a week
+            ["--gui", "--window", "Safari"],  // the picker cannot start from a window
+            ["--gui", "--display", "1"],  // nor from a whole display
+            ["--gui", "--list"],
         ]
         for arguments in invalid {
             XCTAssertThrowsError(try Options.parse(arguments), "\(arguments)") { error in
@@ -89,7 +101,19 @@ final class OptionsTests: XCTestCase {
         }
     }
 
+    func testRegionAllowsSpacesAroundNumbers() throws {
+        XCTAssertEqual(try Options.parse(["--region", "0, 10, 640, 360"]).region, CGRect(x: 0, y: 10, width: 640, height: 360))
+    }
+
+    func testTheGUICanStartFromARegion() throws {
+        let options = try Options.parse(["--gui", "--display", "1", "--region", "0,0,640,360"])
+        XCTAssertTrue(options.gui)
+        XCTAssertEqual(options.display, 1)
+        XCTAssertEqual(options.region, CGRect(x: 0, y: 0, width: 640, height: 360))
+    }
+
     func testBoundaryValuesAreAccepted() throws {
+        XCTAssertEqual(try Options.parse(["--duration", "604800"]).duration, 604_800)
         XCTAssertEqual(try Options.parse(["--fps", "1"]).fps, 1)
         XCTAssertEqual(try Options.parse(["--fps", "240"]).fps, 240)
         XCTAssertEqual(try Options.parse(["--scale", "0.1"]).scale, 0.1)

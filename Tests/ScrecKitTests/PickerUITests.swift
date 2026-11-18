@@ -17,7 +17,7 @@ final class PickerUITests: XCTestCase {
         let frame = CGRect(origin: .zero, size: size)
         let picker = Picker(
             options: options,
-            displays: [PickDisplay(index: 0, frame: frame, screenFrame: frame, scale: 2)],
+            displays: [PickDisplay(index: 0, id: 101, frame: frame, screenFrame: frame, scale: 2)],
             windows: [PickWindow(id: 11, frame: CGRect(x: 200, y: 150, width: 700, height: 450))],
             microphones: microphones,
             pointer: CGPoint(x: 400, y: 300))
@@ -69,7 +69,8 @@ final class PickerUITests: XCTestCase {
         picker.overlays[0].click(at: CGPoint(x: 400, y: 300))
         XCTAssertEqual(log.options.count, 1)
         XCTAssertEqual(log.options.first?.display, 0)
-        XCTAssertNil(log.options.first?.window)
+        XCTAssertEqual(log.options.first?.displayID, 101)
+        XCTAssertNil(log.options.first?.windowID)
         XCTAssertNil(log.options.first?.region)
     }
 
@@ -80,7 +81,8 @@ final class PickerUITests: XCTestCase {
         picker.overlays[0].click(at: CGPoint(x: 1500, y: 900))  // not on the window
         XCTAssertTrue(log.options.isEmpty)
         picker.overlays[0].click(at: CGPoint(x: 400, y: 300))
-        XCTAssertEqual(log.options.first?.window, "11")
+        XCTAssertEqual(log.options.first?.windowID, 11)
+        XCTAssertNil(log.options.first?.window)
     }
 
     func testARegionIsRecordedOnceDrawn() throws {
@@ -95,6 +97,19 @@ final class PickerUITests: XCTestCase {
         XCTAssertTrue(try button(titled: "Record", in: picker).isEnabled)
         picker.start()
         XCTAssertEqual(log.options.first?.region, CGRect(x: 300, y: 200, width: 600, height: 450))
+    }
+
+    func testARegionGivenWithGUIIsSelectedAtStart() throws {
+        var options = try Options.parse(["--gui", "--region", "100,50,640,360"])
+        options.quality = .high
+        let picker = makePicker(options: options)
+        let log = picks(from: picker)
+        XCTAssertEqual(picker.model.mode, .region)
+        XCTAssertTrue(try button(titled: "Record", in: picker).isEnabled)
+        picker.start()
+        XCTAssertEqual(log.options.first?.region, CGRect(x: 100, y: 50, width: 640, height: 360))
+        XCTAssertEqual(log.options.first?.displayID, 101)
+        XCTAssertEqual(log.options.first?.quality, .high)
     }
 
     func testOptionsMenuStartsWithTheCommandLineChoices() throws {

@@ -50,6 +50,12 @@ final class VideoPlanTests: XCTestCase {
         XCTAssertEqual(plan(options).bitrate, 4_000_000)
     }
 
+    func testAnExplicitBitrateIsNotRaisedToTheFloor() {
+        var options = Options()
+        options.bitrate = 0.1
+        XCTAssertEqual(plan(options).bitrate, 100_000)
+    }
+
     func testBitrateHasAFloor() {
         var options = Options()
         options.quality = .low

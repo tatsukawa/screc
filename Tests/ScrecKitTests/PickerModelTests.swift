@@ -9,9 +9,9 @@ final class PickerModelTests: XCTestCase {
     /// Displays 0 and 1 sit side by side. Display 2 is small and lies to the right of both.
     var displays: [PickDisplay] {
         [
-            PickDisplay(index: 0, frame: CGRect(x: 0, y: 0, width: width, height: height), screenFrame: .zero, scale: 2),
-            PickDisplay(index: 1, frame: CGRect(x: width, y: 0, width: width, height: height), screenFrame: .zero, scale: 2),
-            PickDisplay(index: 2, frame: CGRect(x: 2 * width, y: 100, width: 500, height: 400), screenFrame: .zero, scale: 1),
+            PickDisplay(index: 0, id: 101, frame: CGRect(x: 0, y: 0, width: width, height: height), screenFrame: .zero, scale: 2),
+            PickDisplay(index: 1, id: 102, frame: CGRect(x: width, y: 0, width: width, height: height), screenFrame: .zero, scale: 2),
+            PickDisplay(index: 2, id: 103, frame: CGRect(x: 2 * width, y: 100, width: 500, height: 400), screenFrame: .zero, scale: 1),
         ]
     }
 
@@ -54,10 +54,10 @@ final class PickerModelTests: XCTestCase {
 
     func testDisplayModeSelectsTheDisplayUnderThePointer() {
         var model = makeModel(mode: .display)
-        XCTAssertEqual(model.selection?.target, .display(0))
+        XCTAssertEqual(model.selection?.target, .display(displays[0]))
         XCTAssertEqual(model.selection?.size, CGSize(width: width, height: height))
         model.movePointer(to: point(400, 300), on: displays[1])
-        XCTAssertEqual(model.selection?.target, .display(1))
+        XCTAssertEqual(model.selection?.target, .display(displays[1]))
         XCTAssertEqual(model.highlight(on: displays[1]), CGRect(origin: .zero, size: CGSize(width: width, height: height)))
         XCTAssertNil(model.highlight(on: displays[0]))
     }
@@ -89,18 +89,25 @@ final class PickerModelTests: XCTestCase {
         XCTAssertNil(makeModel(region: rect(10, 10, 100, 100)).hint)
     }
 
-    func testSelectionDecidesTheOptions() {
+    func testSelectionDecidesTheOptionsByID() {
         var options = Options()
-        options.select(.region(display: 1, rect: rect(5, 6, 700, 500)))
+        options.window = "Safari"  // anything from the command line is replaced
+        options.select(.region(displays[1], rect(5, 6, 700, 500)))
         XCTAssertEqual(options.display, 1)
+        XCTAssertEqual(options.displayID, displays[1].id)
         XCTAssertEqual(options.region, rect(5, 6, 700, 500))
         XCTAssertNil(options.window)
+
         options.select(.window(77))
-        XCTAssertEqual(options.window, "77")
+        XCTAssertEqual(options.windowID, 77)
+        XCTAssertNil(options.window, "a picked window is never matched by name")
         XCTAssertNil(options.region)
-        options.select(.display(2))
+        XCTAssertNil(options.displayID)
+
+        options.select(.display(displays[2]))
         XCTAssertEqual(options.display, 2)
-        XCTAssertNil(options.window)
+        XCTAssertEqual(options.displayID, displays[2].id)
+        XCTAssertNil(options.windowID)
     }
 
     // MARK: Drawing a region
@@ -109,7 +116,7 @@ final class PickerModelTests: XCTestCase {
         var model = makeModel(mode: .region)
         drag(&model, point(300, 200), point(900, 650))
         XCTAssertEqual(model.region, PickRegion(display: 0, rect: rect(300, 200, 600, 450)))
-        XCTAssertEqual(model.selection?.target, .region(display: 0, rect: rect(300, 200, 600, 450)))
+        XCTAssertEqual(model.selection?.target, .region(displays[0], rect(300, 200, 600, 450)))
     }
 
     func testDraggingUpAndLeftDrawsTheSameRegion() {

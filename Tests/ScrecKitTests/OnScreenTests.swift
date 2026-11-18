@@ -85,7 +85,7 @@ final class OnScreenTests: XCTestCase {
         prepareAppKit()
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let frame = CGRect(x: screen.frame.maxX - size.width - 20, y: screen.frame.minY + 90, width: size.width, height: size.height)
-        let display = PickDisplay(index: 0, frame: CGRect(origin: .zero, size: size), screenFrame: frame, scale: 2)
+        let display = PickDisplay(index: 0, id: 101, frame: CGRect(origin: .zero, size: size), screenFrame: frame, scale: 2)
         let picker = Picker(options: Options(), displays: [display], windows: windows, microphones: [], pointer: CGPoint(x: 100, y: 100))
         picker.makeOverlays()
 
@@ -142,7 +142,7 @@ final class OnScreenTests: XCTestCase {
 
         func shoot(_ name: String) throws {
             spin(0.45)
-            try writeSnapshot(of: stage.frame, to: "\(directory)/\(name).png")
+            try writeSnapshot(of: stage.frame, windows: [stage.overlayWindow, stage.backdrop], to: "\(directory)/\(name).png")
         }
         overlay.mouseMoved(with: mouseEvent(.mouseMoved, at: CGPoint(x: 100, y: 100), in: overlay))
         try shoot("picker-display")
@@ -171,13 +171,14 @@ final class OnScreenTests: XCTestCase {
         }
         indicator.started()
         spin(1.3)  // let the clock show 0:01
-        try writeSnapshot(of: panelFrame, to: "\(directory)/panel-recording.png")
+        let panelWindows = [indicator.panel, panelBackdrop]
+        try writeSnapshot(of: panelFrame, windows: panelWindows, to: "\(directory)/panel-recording.png")
         indicator.stopButton.performClick(nil)
         spin(0.3)
-        try writeSnapshot(of: panelFrame, to: "\(directory)/panel-saving.png")
+        try writeSnapshot(of: panelFrame, windows: panelWindows, to: "\(directory)/panel-saving.png")
         indicator.saved()
         spin(0.3)
-        try writeSnapshot(of: panelFrame, to: "\(directory)/panel-saved.png")
+        try writeSnapshot(of: panelFrame, windows: panelWindows, to: "\(directory)/panel-saved.png")
     }
 
     /// A gradient with a white card and a dark card, standing in for windows of other apps.
@@ -192,18 +193,30 @@ final class OnScreenTests: XCTestCase {
         }
     }
 
-    /// Writes a picture of what the window server shows in `frame` (AppKit coordinates).
-    /// Only this process's own windows are captured, which needs no screen recording permission.
-    func writeSnapshot(of frame: CGRect, to path: String) throws {
+    /// Writes a picture of `windows`, composited as they are on screen, cropped to `frame` (AppKit coordinates).
+    /// Only the given windows, all of them this test's own, are captured: nothing else on the screen can end up in the
+    /// picture, and no screen recording permission is needed.
+    func writeSnapshot(of frame: CGRect, windows: [NSWindow], to path: String) throws {
+        guard let createImage = windowImageFunction else {
+            throw XCTSkip("CGWindowListCreateImageFromArray is not available on this system")
+        }
         let mainHeight = CGDisplayBounds(CGMainDisplayID()).height
         let rect = CGRect(x: frame.minX, y: mainHeight - frame.maxY, width: frame.width, height: frame.height)
-        let image = try XCTUnwrap(windowListCreateImage(rect, 1, 0, 8)?.takeRetainedValue(), "could not capture \(path)")
+        // A CFArray of window IDs stored as bare values, which is what the function expects. Front-most first.
+        var ids = windows.map { UnsafeRawPointer(bitPattern: UInt($0.windowNumber)) }
+        let array = try XCTUnwrap(CFArrayCreate(nil, &ids, ids.count, nil))
+        let image = try XCTUnwrap(createImage(rect, array, 8)?.takeRetainedValue(), "could not capture \(path)")  // 8: best resolution
         let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
         try png.write(to: URL(fileURLWithPath: path))
     }
 }
 
-/// `CGWindowListCreateImage` is marked unavailable in the macOS 15 SDK, which wants ScreenCaptureKit and its permission
-/// prompt instead. Capturing our own windows needs no permission, so the symbol is called directly.
-@_silgen_name("CGWindowListCreateImage")
-private func windowListCreateImage(_ bounds: CGRect, _ option: UInt32, _ windowID: UInt32, _ imageOption: UInt32) -> Unmanaged<CGImage>?
+/// `CGWindowListCreateImageFromArray` is marked unavailable in the current SDK, which wants ScreenCaptureKit and its
+/// permission prompt instead; capturing this process's own windows needs neither. It is looked up at run time, so that
+/// the tests still build and run if a future macOS removes it: the snapshot test is then skipped.
+private typealias WindowImageFunction = @convention(c) (CGRect, CFArray, UInt32) -> Unmanaged<CGImage>?
+private let windowImageFunction: WindowImageFunction? = {
+    let defaultHandle = UnsafeMutableRawPointer(bitPattern: -2)  // RTLD_DEFAULT
+    guard let symbol = dlsym(defaultHandle, "CGWindowListCreateImageFromArray") else { return nil }
+    return unsafeBitCast(symbol, to: WindowImageFunction.self)
+}()

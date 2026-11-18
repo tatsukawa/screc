@@ -16,8 +16,9 @@ struct VideoPlan: Equatable {
         func pixels(_ length: CGFloat) -> Int { max(16, Int((length * scale).rounded()) & ~1) }  // Even sizes, for the encoder.
         width = pixels(points.width)
         height = pixels(points.height)
+        // The floor only applies to the computed bitrate: an explicit --bitrate is taken as given.
         let automatic = Double(width * height) * options.quality.bitsPerPixel * (options.hevc ? 0.6 : 1)
-        bitrate = max(300_000, Int(options.bitrate.map { $0 * 1_000_000 } ?? automatic))
+        bitrate = options.bitrate.map { Int($0 * 1_000_000) } ?? max(300_000, Int(automatic))
     }
 
     /// The size of one hour of recording, as an upper bound. The encoder uses less than the target bitrate while the

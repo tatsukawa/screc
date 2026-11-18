@@ -4,14 +4,16 @@ import AVFoundation
 ///
 /// The microphone is recorded as a second audio track next to the system audio, and many players only play the first
 /// track. The video is copied without re-encoding; only the audio is mixed down and re-encoded. A file with fewer than
-/// two audio tracks is left untouched.
+/// two audio tracks is left untouched. If mixing fails, the file is left as it was.
 public func mixAudioTracks(of url: URL) async throws {
     let asset = AVURLAsset(url: url)
     let audioTracks = try await asset.loadTracks(withMediaType: .audio)
     guard audioTracks.count > 1, let videoTrack = try await asset.loadTracks(withMediaType: .video).first else { return }
 
-    let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).mixing.mp4")
-    try? FileManager.default.removeItem(at: temporary)
+    // A fresh name next to the file: nothing that exists is replaced, and the final swap stays on one volume.
+    let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).mixing.mp4")
+    var keepTemporary = false
+    defer { if !keepTemporary { try? FileManager.default.removeItem(at: temporary) } }
 
     let reader = try AVAssetReader(asset: asset)
     let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)  // nil: pass the encoded frames through
@@ -44,29 +46,73 @@ public func mixAudioTracks(of url: URL) async throws {
     guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
     writer.startSession(atSourceTime: .zero)
 
-    async let video: Void = pump(videoOutput, into: videoInput)
-    async let audio: Void = pump(audioOutput, into: audioInput)
-    _ = await (video, audio)
-    await writer.finishWriting()
+    await pump([(videoOutput, videoInput), (audioOutput, audioInput)])
 
-    guard reader.status == .completed, writer.status == .completed else {
-        try? FileManager.default.removeItem(at: temporary)
-        throw reader.error ?? writer.error ?? CocoaError(.fileWriteUnknown)
+    guard writer.status == .writing, reader.status == .completed else {
+        reader.cancelReading()
+        writer.cancelWriting()
+        throw writer.error ?? reader.error ?? CocoaError(.fileWriteUnknown)
     }
+    await writer.finishWriting()
+    guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
     _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
+    keepTemporary = true  // It has become `url`.
 }
 
-/// Copies every sample from `output` to `input`, then closes the input.
-private func pump(_ output: AVAssetReaderOutput, into input: AVAssetWriterInput) async {
+/// Copies every sample of each output to its input, all at the same time (the writer needs the tracks interleaved).
+///
+/// Returns once every track has been copied, or as soon as an append fails. An append fails when the writer has failed,
+/// and then an input that is waiting to become ready is never called again, so waiting for it would hang.
+private func pump(_ pairs: [(output: AVAssetReaderOutput, input: AVAssetWriterInput)]) async {
     await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-        input.requestMediaDataWhenReady(on: DispatchQueue(label: "screc.pump")) {
-            while input.isReadyForMoreMediaData {
-                guard let sample = output.copyNextSampleBuffer(), input.append(sample) else {
-                    input.markAsFinished()
-                    done.resume()
-                    return
+        let completion = PumpCompletion(count: pairs.count, done: done)
+        for (index, pair) in pairs.enumerated() {
+            var finished = false  // Only touched on this pair's queue.
+            pair.input.requestMediaDataWhenReady(on: DispatchQueue(label: "screc.mix.\(index)")) {
+                guard !finished else { return }
+                while pair.input.isReadyForMoreMediaData {
+                    guard let sample = pair.output.copyNextSampleBuffer() else {  // The end of this track.
+                        finished = true
+                        pair.input.markAsFinished()
+                        completion.trackFinished()
+                        return
+                    }
+                    guard pair.input.append(sample) else {  // The writer has failed.
+                        finished = true
+                        completion.failed()
+                        return
+                    }
                 }
             }
         }
+    }
+}
+
+/// Resumes the waiting `pump` exactly once: when every track is done, or at the first failure.
+private final class PumpCompletion {
+    private let lock = NSLock()
+    private var remaining: Int
+    private var done: CheckedContinuation<Void, Never>?
+
+    init(count: Int, done: CheckedContinuation<Void, Never>) {
+        remaining = count
+        self.done = done
+    }
+
+    func trackFinished() {
+        lock.withLock {
+            remaining -= 1
+            if remaining == 0 { resume() }
+        }
+    }
+
+    func failed() {
+        lock.withLock { resume() }
+    }
+
+    /// Call with the lock held.
+    private func resume() {
+        done?.resume()
+        done = nil
     }
 }

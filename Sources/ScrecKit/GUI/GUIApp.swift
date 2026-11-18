@@ -23,7 +23,7 @@ private func makePicker(_ options: Options) async -> Picker {
     let content = await shareableContent()
     let displays = content.displays.enumerated().compactMap { index, display -> PickDisplay? in
         let screen = NSScreen.screens.first { $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID == display.displayID }
-        return screen.map { PickDisplay(index: index, frame: display.frame, screenFrame: $0.frame, scale: $0.backingScaleFactor) }
+        return screen.map { PickDisplay(index: index, id: display.displayID, frame: display.frame, screenFrame: $0.frame, scale: $0.backingScaleFactor) }
     }
     guard !displays.isEmpty else { fail("no display to record") }
     let windows = ordinaryWindows(content).map { PickWindow(id: $0.windowID, frame: $0.frame) }
@@ -47,14 +47,15 @@ private func recordAndReveal(_ options: Options) async {
     indicator.prepare()
     control.excludedWindowIDs = [indicator.windowID]  // Keep the stop panel out of the video.
     control.onStart = indicator.started
+    control.onStopping = indicator.stopping
     try? await Task.sleep(for: .milliseconds(250))  // Let the picker's overlays disappear from the screen first.
 
     let output = await record(options, control: control)
-
-    // `open -R` rather than NSWorkspace, which logs a pasteboard warning to the terminal.
-    let reveal = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-R", output.path])
-    reveal?.waitUntilExit()
     indicator.saved()
+
+    // Showing the file in Finder is a convenience: do not wait for it. `open -R` rather than NSWorkspace, which logs a
+    // pasteboard warning to the terminal.
+    _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-R", output.path])
     try? await Task.sleep(for: .milliseconds(1500))  // Show "Saved" for a moment before quitting.
     exit(0)
 }

@@ -65,8 +65,12 @@ While recording, a panel at the top of the screen shows the elapsed time and a *
 same button. The panel is left out of the recording. When you stop, the panel says "Saved" and the file is shown in
 Finder.
 
-Recordings are saved in the directory you started screc from, as `Recording-<date>-<time>.mp4`. An existing file is
-never overwritten.
+If the picker ever stops responding, press Ctrl+C in the terminal you started it from.
+
+Recordings are saved in the directory you started screc from, as `Recording-<date>-<time>.mp4`, and only you can
+read them. A recording is written elsewhere while it is being made and appears under its name only once it is
+complete. An existing file is never overwritten: if the name was taken in the meantime, the recording is saved as
+`…-2.mp4` instead.
 
 ## Recording from the command line
 
@@ -74,20 +78,21 @@ Any option other than `--gui` switches screc to the command line: it records rig
 
 ```sh
 ./screc --display 0                  # the main display
-./screc --window Safari              # one window, by part of its app name or title
+./screc --window Safari              # one window, by text that only its app name or title contains
 ./screc --region 0,0,1280,720        # part of a display: x, y, width, height in points from the top left
 ./screc --mic --quality low talk.mp4
 ./screc --duration 30                # stop by itself after 30 seconds
 ./screc --list                       # displays, windows and microphones you can choose from
 ```
 
-Ctrl+C (or `kill`) stops the recording cleanly: the file is closed and playable.
+Ctrl+C (or `kill`) stops the recording cleanly: the file is closed and playable. If saving seems stuck, a second
+Ctrl+C aborts and discards the recording.
 
 | Option               | Meaning                                                                        |
 | -------------------- | ------------------------------------------------------------------------------ |
 | `--display N`        | Record display `N` (default 0; see `--list`)                                   |
 | `--region X,Y,W,H`   | Record part of the display, in points from its top-left corner                 |
-| `--window NAME`      | Record one window: part of "App — Title", or a window ID from `--list`         |
+| `--window NAME`      | Record one window: a window ID from `--list`, or text that occurs in exactly one window's "App — Title" (a name that matches several windows is an error, so that a broad name cannot record the wrong one) |
 | `--mic`              | Also record a microphone (see below)                                           |
 | `--mic-device NAME`  | Record this microphone, by part of its name; implies `--mic`                   |
 | `--quality Q`        | `high`, `medium` (default) or `low`                                            |
@@ -95,9 +100,9 @@ Ctrl+C (or `kill`) stops the recording cleanly: the file is closed and playable.
 | `--bitrate MBPS`     | Video bitrate in Mbps, instead of the one `--quality` picks                    |
 | `--fps N`            | Maximum frame rate (default 60)                                                |
 | `--hevc`             | HEVC instead of H.264: smaller at the same quality, but less widely supported  |
-| `--duration SEC`     | Stop after this many seconds                                                   |
+| `--duration SEC`     | Stop after this many seconds (at most one week)                                |
 | `--list`             | List displays, windows and microphones, then exit                              |
-| `--gui`              | Open the picker, starting from the other options given                         |
+| `--gui`              | Open the picker, starting from the other options; with `--region` (and `--display`), that region is selected |
 | `-h`, `--help`       | Show the help                                                                  |
 
 An argument that is not an option is the output file.

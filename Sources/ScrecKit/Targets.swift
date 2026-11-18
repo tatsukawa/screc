@@ -18,6 +18,12 @@ func label(_ window: SCWindow) -> String {
     [window.owningApplication?.applicationName, window.title].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")
 }
 
+/// `text` made safe to print to a terminal. Window titles and device names come from other programs, and a control
+/// character in one could rewrite what the terminal shows, for example to fake a line of `--list` output.
+func printable(_ text: String) -> String {
+    String(String.UnicodeScalarView(text.unicodeScalars.map { CharacterSet.controlCharacters.contains($0) ? "?" : $0 }))
+}
+
 /// Normal application windows, front-most first. Menu bar items, the Dock and similar are left out.
 func ordinaryWindows(_ content: SCShareableContent) -> [SCWindow] {
     let onScreen = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -30,13 +36,21 @@ func ordinaryWindows(_ content: SCShareableContent) -> [SCWindow] {
         .sorted { rank[$0.windowID, default: .max] < rank[$1.windowID, default: .max] }
 }
 
-/// Finds the window that `--window` refers to, by ID or by part of its name. The front-most match wins.
+/// Finds the window that `--window` names.
+///
+/// A number is a window ID and must match exactly. Anything else must occur in exactly one window's "App — Title":
+/// when it matches several, recording the front-most one could capture a window the user did not mean, and that window
+/// may show something private, so it is an error that lists the candidates instead.
 func findWindow(_ query: String, in windows: [SCWindow]) -> SCWindow {
-    if let id = CGWindowID(query), let window = windows.first(where: { $0.windowID == id }) { return window }
+    if let id = CGWindowID(query) {
+        guard let window = windows.first(where: { $0.windowID == id }) else { fail("there is no window with the ID \(id) (see --list)") }
+        return window
+    }
     let matches = windows.filter { label($0).localizedCaseInsensitiveContains(query) }
-    guard let first = matches.first else { fail("no window matches \"\(query)\" (see --list)") }
-    if matches.count > 1 {
-        say("screc: \(matches.count) windows match. Recording the front-most one, \"\(label(first))\" (ID \(first.windowID)). Give an ID from --list to pick another.")
+    guard let first = matches.first else { fail("no window matches \"\(printable(query))\" (see --list)") }
+    guard matches.count == 1 else {
+        let candidates = matches.map { "  \($0.windowID): \(printable(label($0)))" }.joined(separator: "\n")
+        fail("\(matches.count) windows match \"\(printable(query))\". Give the ID of the one to record:\n\(candidates)")
     }
     return first
 }
@@ -48,12 +62,12 @@ func listTargets() async {
     for (index, display) in content.displays.enumerated() { print("  \(index): \(display.width)x\(display.height) pt") }
     print("Windows (--window):")
     for window in ordinaryWindows(content) {
-        print("  \(window.windowID): \(label(window))  [\(Int(window.frame.width))x\(Int(window.frame.height)) pt]")
+        print("  \(window.windowID): \(printable(label(window)))  [\(Int(window.frame.width))x\(Int(window.frame.height)) pt]")
     }
     print("Microphones (--mic-device):")
     let automatic = chooseMicrophone(nil)
     for microphone in microphones() {
-        print("  \(microphone.localizedName)" + (isBluetooth(microphone) ? "  [Bluetooth]" : "")
+        print("  \(printable(microphone.localizedName))" + (isBluetooth(microphone) ? "  [Bluetooth]" : "")
             + (microphone.uniqueID == automatic?.uniqueID ? "  <- used when only --mic is given" : ""))
     }
 }

@@ -140,12 +140,18 @@ final class RecordingIndicator {
 
     @objc private func stopRequested() {
         guard phase == .recording else { return }
+        stopping()
+        stop()
+    }
+
+    /// The recording is ending, however it was stopped (this button, Ctrl+C, `--duration` or a failure).
+    func stopping() {
+        guard phase == .recording else { return }
         timer?.invalidate()
         dot.layer?.removeAllAnimations()
         apply(.saving)
         statusItem?.button?.image = nil
         statusItem?.button?.title = "Saving…"
-        stop()
     }
 
     /// The file is saved. Say so, so that the panel does not just vanish.

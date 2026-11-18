@@ -26,10 +26,17 @@ in both interfaces, and a fix fixes both.
 `record()` asks ScreenCaptureKit for the displays and windows that can be captured, and turns the options into a
 content filter:
 
-- **Display**: a filter for the whole display, minus screc's own windows (the stop panel).
+- **Display**: a filter for the whole display, minus every window of screc itself (the stop panel, and picker
+  overlays that may still be on screen).
 - **Region**: the same display filter, with `sourceRect` set to the region. Regions are in points, measured from the
   top-left corner of the display, which is the coordinate space ScreenCaptureKit uses.
 - **Window**: a filter for that one window, which keeps working when the window moves or is covered.
+
+What the GUI picked is passed on by ID: the display's ID and the window's ID. Display numbers can change while the
+picker is open, for example when a display is connected, and a vanished window must not be replaced by another one
+whose title happens to contain its number. If the picked display or window is gone, recording does not start. On the
+command line, `--window` takes an ID or text that occurs in exactly one window's name; a name that matches several
+windows is an error rather than a guess, because the wrong window may show something private.
 
 The stream configuration asks for the system audio (`capturesAudio`) at 48 kHz stereo. This single setting is what
 makes a virtual audio device unnecessary. With a microphone, it also sets `captureMicrophone` and the device to use.
@@ -44,6 +51,11 @@ no bitrate setting. screc instead receives the samples and encodes them with its
 ScreenCaptureKit marks every video sample with a status, and samples marked idle carry no new picture because the
 screen did not change. `MovieWriter` writes only samples with a new picture, so a still screen costs almost nothing,
 and the file has a variable frame rate capped by `--fps`. The file starts at the first video frame; audio that arrives earlier is dropped.
+When the recording stops, the last picture is written once more at the moment of the stop, so that the video lasts as
+long as the recording even if nothing changed on screen at the end.
+
+If the encoder fails while recording (for example because the disk is full), `MovieWriter` reports it at once, and the
+recording stops instead of running on while nothing is saved.
 
 ### Resolution and bitrate
 
@@ -62,8 +74,8 @@ than its target when little changes on screen.
 
 The microphone arrives as a second audio stream and is written to a second audio track. Many players only play the
 first audio track, so once the file is closed, `mixAudioTracks` (`ScrecMedia/AudioMix.swift`) mixes both tracks into
-one. It copies the video as it is, without re-encoding it, and replaces the file. If mixing fails, the recording keeps
-its two tracks and nothing is lost.
+one. It copies the video as it is, without re-encoding it, into a new file with a unique name, and then swaps the two.
+If mixing fails, the recording keeps its two tracks and nothing is lost.
 
 When no microphone is named, screc uses the system's default input, except when that is a Bluetooth device and the Mac
 has a built-in microphone (`Microphones.swift`). A Bluetooth headset can only use its microphone in its call mode,
@@ -73,9 +85,26 @@ users do not expect a screen recorder to do it.
 ## Stopping
 
 A recording runs until something calls `Control.stop()`: Ctrl+C or `kill` on the command line, the Stop button in the
-GUI, or the `--duration` timer. Signals are caught rather than allowed to end the process, so the file is always
-closed properly. If ScreenCaptureKit stops the stream on its own, the recording ends the same way, and what was recorded
-until then is saved.
+GUI, or the `--duration` timer. The first signal is caught rather than allowed to end the process, so the file is
+closed properly; a second one aborts at once and discards the recording, for when saving hangs. The signal handlers run
+on their own queue, so they work even while the main thread is busy, and the default behaviour is restored afterwards.
+If ScreenCaptureKit stops the stream on its own, the recording ends the same way, and what was recorded until then is
+saved.
+
+## Saving
+
+`OutputFile.swift` decides where the recording goes. While it is being made, it is written into a directory created for
+it alone, on the same volume as the destination. Only when the file is complete (and its audio mixed) is it moved to
+its final name, with a rename that fails instead of replacing anything that exists (`renamex_np` with `RENAME_EXCL`).
+So:
+
+- an unfinished or failed recording never appears under the final name;
+- nothing is overwritten, and a symbolic link at the destination is never followed;
+- screc only ever deletes what it created itself;
+- if the name was taken while recording, the next free name (`…-2.mp4`) is used instead.
+
+The published file is readable by its owner only (mode 0600), since a screen recording can show anything that was on
+the screen.
 
 ## The picker
 
@@ -104,8 +133,9 @@ During a recording from the GUI, a panel at the top of the screen shows the elap
 menu bar has the same button (`RecordingIndicator.swift`). The panel does not take the keyboard focus from the app
 being recorded, and it can be dragged out of the way.
 
-The panel is left out of the recording by its window ID. screc asks ScreenCaptureKit only for windows that are on
-screen, so the panel is shown first and the recording started afterwards.
+The panel is left out of the recording together with every other window of screc, by excluding screc as an
+application from the capture. ScreenCaptureKit only lists applications that have a window on screen, so the panel is
+shown before the recording starts. Should screc not be listed, the panel is excluded by its window ID instead.
 
 ## Code layout
 

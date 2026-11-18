@@ -74,8 +74,18 @@ Each of these was a real bug or trap. Keep the fix, and keep the test where ther
 - **A Bluetooth headset's microphone degrades what the user hears** (call mode, 16 kHz). `chooseMicrophone` avoids it
   unless asked for by name.
 - **NSWorkspace printed pasteboard warnings** when revealing the file in Finder; `open -R` does not.
-- **`CGWindowListCreateImage` is unavailable** in the current SDK. The snapshot test calls it by symbol name to capture
-  its own windows, which needs no permission. Do not use that in the product.
+- **Window-capture functions are unavailable** in the current SDK. The snapshot test looks up
+  `CGWindowListCreateImageFromArray` at run time and captures only its own windows, which needs no permission and
+  cannot pick up anything else on the screen. Do not use that in the product.
+- **Never write to the destination path directly.** `OutputFile` stages the recording and publishes it with a no-clobber
+  rename. `fileExists` follows symbolic links, so existence checks use `lstat`. Delete only what screc created.
+- **Writer failures must stop the recording.** `MovieWriter.onFailure` reports them at once; before, a full disk went
+  unnoticed until the user stopped.
+- **The GUI names displays and windows by ID**, never by index or title, and `--window` refuses names that match
+  several windows. Recording the wrong target can expose private content.
+- **Validate numbers strictly.** `compactMap` once turned `--region 10,typo,20,300,200` into a different region, and
+  `--duration inf` crashed the timer after recording had started.
+- **Text from other programs** (window titles, device names) goes through `printable()` before it is printed.
 
 ## Commits
 
