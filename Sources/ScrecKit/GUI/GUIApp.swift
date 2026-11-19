@@ -107,8 +107,8 @@ final class ScrecAppDelegate: NSObject, NSApplicationDelegate {
     /// again once it is saved.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         switch RecordingIndicator.current?.phase {
-        case .recording:
-            RecordingIndicator.current?.requestStop()
+        case .starting, .recording:
+            RecordingIndicator.current?.requestStopForQuit()
             return .terminateCancel
         case .saving:
             return .terminateCancel

@@ -106,6 +106,7 @@ final class RecordingIndicator {
 
     /// The recording has started: count the time and offer the stop button.
     func started() {
+        guard phase == .starting else { return }
         began = Date()
         apply(.recording)
 
@@ -149,9 +150,16 @@ final class RecordingIndicator {
         stop()
     }
 
+    /// Quit can arrive while ScreenCaptureKit is still starting. Queue a stop before it can write a file.
+    func requestStopForQuit() {
+        guard phase == .starting || phase == .recording else { return }
+        stopping()
+        stop()
+    }
+
     /// The recording is ending, however it was stopped (this button, Ctrl+C, `--duration` or a failure).
     func stopping() {
-        guard phase == .recording else { return }
+        guard phase == .starting || phase == .recording else { return }
         timer?.invalidate()
         dot.layer?.removeAllAnimations()
         apply(.saving)

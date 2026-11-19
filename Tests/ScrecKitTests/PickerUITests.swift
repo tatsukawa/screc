@@ -289,6 +289,21 @@ final class PickerUITests: XCTestCase {
 
 @MainActor
 final class RecordingIndicatorHeadlessTests: XCTestCase {
+    func testQuittingDuringStartupQueuesOneStopAndDoesNotRestartTheIndicator() {
+        prepareAppKit()
+        var stops = 0
+        let indicator = RecordingIndicator { stops += 1 }
+        RecordingIndicator.current = indicator
+        defer { RecordingIndicator.current = nil }
+        let delegate = ScrecAppDelegate()
+        XCTAssertEqual(delegate.applicationShouldTerminate(NSApp), .terminateCancel)
+        XCTAssertEqual(delegate.applicationShouldTerminate(NSApp), .terminateCancel)
+        XCTAssertEqual(stops, 1)
+        XCTAssertEqual(indicator.phase, .saving)
+        indicator.started()
+        XCTAssertEqual(indicator.phase, .saving)
+    }
+
     func testStoppingIsIgnoredUntilTheRecordingHasStarted() {
         prepareAppKit()
         var stops = 0
