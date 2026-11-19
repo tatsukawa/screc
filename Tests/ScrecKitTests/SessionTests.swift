@@ -80,7 +80,7 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(session.state, .idle)
         XCTAssertEqual(log.quits, 0)
         XCTAssertTrue(log.recorded.isEmpty)
-        XCTAssertNil(Picker.current)
+        XCTAssertNil(session.picker)
     }
 
     func testThereIsNeverASecondPicker() async throws {

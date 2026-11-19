@@ -6,9 +6,6 @@ import AppKit
 /// The geometry of the selection lives in `PickerModel`; this class connects the model to the views.
 @MainActor
 final class Picker {
-    /// Keeps the picker alive while it is on screen.
-    static var current: Picker?
-
     var model: PickerModel
     /// Called with the finished choice, after the picker has closed itself.
     var onPick: (Options) -> Void = { _ in }

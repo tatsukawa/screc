@@ -3,7 +3,7 @@ import Foundation
 /// Settings that are kept between runs: everything chosen in the picker's Options menu.
 ///
 /// They apply to the GUI, that is the app and `screc` without arguments. On the command line every setting can be
-/// given as an option, and an option that was given always wins over the stored value (see `apply(to:)`).
+/// given as an option, and an option that was given always wins over the stored value (see `overridden(by:)`).
 struct Preferences: Equatable {
     /// Where recordings made with the GUI are saved.
     enum SaveFolder: Equatable {
@@ -118,10 +118,5 @@ struct Preferences: Equatable {
         options.showsCursor = showsCursor
         options.mic = microphoneID != nil
         options.micDevice = microphoneID
-    }
-
-    /// Fills in everything the command line did not say.
-    func apply(to options: inout Options) {
-        overridden(by: options).configure(&options)
     }
 }

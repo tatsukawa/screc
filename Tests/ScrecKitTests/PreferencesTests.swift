@@ -69,7 +69,7 @@ final class PreferencesTests: XCTestCase {
         preferences.microphoneID = "builtin"
 
         var options = try Options.parse([])
-        preferences.apply(to: &options)
+        preferences.overridden(by: options).configure(&options)
         XCTAssertEqual(options.outputDirectory, Preferences.SaveFolder.desktop.url)
         XCTAssertEqual(options.quality, .low)
         XCTAssertTrue(options.hevc)
@@ -86,20 +86,20 @@ final class PreferencesTests: XCTestCase {
         preferences.microphoneID = "builtin"
 
         var options = try Options.parse(["--gui", "--quality", "high", "--fps", "24", "--mic-device", "usb", "--output-dir", "/tmp"])
-        preferences.apply(to: &options)
+        preferences.overridden(by: options).configure(&options)
         XCTAssertEqual(options.quality, .high)
         XCTAssertEqual(options.fps, 24)
         XCTAssertEqual(options.micDevice, "usb")
         XCTAssertEqual(options.outputDirectory?.path, "/tmp")
 
         var named = try Options.parse(["--gui", "~/clip.mp4"])
-        preferences.apply(to: &named)
+        preferences.overridden(by: named).configure(&named)
         XCTAssertNil(named.outputDirectory, "an output file was given, so no folder is needed")
     }
 
     func testNoRememberedMicrophoneMeansNone() throws {
         var options = try Options.parse([])
-        Preferences().apply(to: &options)
+        Preferences().configure(&options)
         XCTAssertFalse(options.mic)
         XCTAssertNil(options.micDevice)
     }

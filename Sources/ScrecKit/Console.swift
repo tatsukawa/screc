@@ -26,7 +26,7 @@ func fail(_ message: String, systemSettings: URL? = nil) -> Never {
 
 @MainActor
 private func showFailureDialog(_ message: String, systemSettings: URL?) {
-    Picker.current?.hide()  // The overlays sit above dialogs.
+    GUISession.shared?.picker?.hide()  // The overlays sit above dialogs.
     let alert = NSAlert()
     alert.alertStyle = .warning
     alert.messageText = "screc cannot continue"

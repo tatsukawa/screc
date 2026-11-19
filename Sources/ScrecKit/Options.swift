@@ -101,7 +101,6 @@ extension Options {
         var options = Options()
         options.gui = arguments.isEmpty
         var args = arguments[...]
-        var displayGiven = false
 
         func value(for flag: String) throws -> String {
             guard let value = args.popFirst() else { throw UsageError.invalid("\(flag) needs a value") }
@@ -131,7 +130,6 @@ extension Options {
             case "--display":
                 guard let n = Int(try value(for: arg)), n >= 0 else { throw UsageError.invalid("--display takes a whole number, 0 or more") }
                 options.display = n
-                displayGiven = true
             case "--region":
                 // Exactly four numbers. Splitting must keep empty fields, so that "10,,20,30,40" is an error rather than
                 // a different region.
@@ -188,7 +186,7 @@ extension Options {
             // The picker can start from a region, but has no way to start from a window or a whole display, and silently
             // ignoring those would record something else than was asked for.
             if options.window != nil { throw UsageError.invalid("--gui cannot be combined with --window; pick the window on screen") }
-            if displayGiven && options.region == nil { throw UsageError.invalid("--gui takes --display only together with --region") }
+            if options.given.contains("--display") && options.region == nil { throw UsageError.invalid("--gui takes --display only together with --region") }
             if options.list { throw UsageError.invalid("--gui cannot be combined with --list") }
         }
         return options

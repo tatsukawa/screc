@@ -55,7 +55,6 @@ final class GUISession {
         picker.onPick = { [weak self] picked in self?.beginRecording(picked) }
         picker.onCancel = { [weak self] in self?.cancelled() }
         self.picker = picker
-        Picker.current = picker
         present(picker)
     }
 
@@ -79,7 +78,6 @@ final class GUISession {
     private func dismissPicker() {
         picker?.close()
         picker = nil
-        Picker.current = nil
     }
 
     /// After a recording or a cancelled picker: an app stays open for the next one; from a terminal, screc is done.

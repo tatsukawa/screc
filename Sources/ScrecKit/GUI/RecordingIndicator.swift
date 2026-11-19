@@ -146,8 +146,7 @@ final class RecordingIndicator {
     /// Stops the recording, as the Stop button does. Does nothing unless it is recording.
     @objc func requestStop() {
         guard phase == .recording else { return }
-        stopping()
-        stop()
+        requestStopForQuit()
     }
 
     /// Quit can arrive while ScreenCaptureKit is still starting. Queue a stop before it can write a file.
@@ -167,7 +166,6 @@ final class RecordingIndicator {
         statusItem?.button?.title = "Saving…"
     }
 
-    /// The file is saved. Say so, so that the panel does not just vanish.
     /// Takes the panel off the screen once the recording is over.
     func dismiss() {
         panel.orderOut(nil)
@@ -176,6 +174,7 @@ final class RecordingIndicator {
         if Self.current === self { Self.current = nil }
     }
 
+    /// Shows the completed state before dismissing the panel.
     func saved() {
         apply(.saved)
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
