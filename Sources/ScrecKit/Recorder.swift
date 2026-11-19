@@ -96,7 +96,6 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         output.discard()
         exit(130)
     }
-    defer { signals.restore() }
 
     do {
         try stream.addStreamOutput(movie, type: .screen, sampleHandlerQueue: movie.queue)
@@ -104,6 +103,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         if options.mic { try stream.addStreamOutput(movie, type: .microphone, sampleHandlerQueue: movie.queue) }
         try await stream.startCapture()
     } catch {
+        signals.restore()
         output.discard()
         fail("cannot start recording: \(error.localizedDescription)")
     }
@@ -133,6 +133,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
     do {
         try await movie.finish()
     } catch {
+        signals.restore()
         output.discard()
         fail("cannot save the recording: \(error.localizedDescription)")
     }
@@ -144,7 +145,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
 
     let saved: URL
     do {
-        saved = try output.publish()
+        saved = try signals.finish { try output.publish() }
     } catch {
         fail("cannot save the recording as \(output.destination.path): \(error). It is still at \(output.recording.path)")
     }
@@ -236,28 +237,47 @@ private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: 
 ///
 /// The first one stops the recording gracefully, so the file is closed properly instead of being cut off. A second one
 /// aborts at once, for when saving hangs. The handlers run on their own queue, so they still work while the main thread
-/// is busy. The default behaviour is restored afterwards.
-private final class StopSignals {
+/// is busy. The previous signal handlers are restored when saving ends.
+final class StopSignals {
     private let queue = DispatchQueue(label: "screc.signals")
-    private var sources: [DispatchSourceSignal] = []
-    private var count = 0  // Only touched on `queue`.
+    // The queue orders signal handling against publication, which is the last point at which a signal can discard a file.
+    private var sources: [Int32: (source: DispatchSourceSignal, previous: sig_t?)] = [:]
+    private var stopRequested = false
 
-    init(control: Control, abort: @escaping () -> Void) {
-        for number in [SIGINT, SIGTERM] {
-            signal(number, SIG_IGN)
-            let source = DispatchSource.makeSignalSource(signal: number, queue: queue)
-            source.setEventHandler { [unowned self] in
-                count += 1
-                if count == 1 { control.stop() } else { abort() }
+    init(control: Control, numbers: [Int32] = [SIGINT, SIGTERM], abort: @escaping () -> Void) {
+        queue.sync {
+            for number in numbers {
+                let previous = signal(number, SIG_IGN)
+                let source = DispatchSource.makeSignalSource(signal: number, queue: queue)
+                sources[number] = (source, previous)
+                source.setEventHandler { [weak self] in
+                    guard let self, let source = sources[number]?.source else { return }
+                    if stopRequested || source.data > 1 { abort() }
+                    stopRequested = true
+                    control.stop()
+                }
+                source.resume()
             }
-            source.resume()
-            sources.append(source)
+        }
+    }
+
+    /// Publishes before restoring the handlers, without letting an abort run between the two.
+    func finish<T>(_ publish: () throws -> T) rethrows -> T {
+        try queue.sync {
+            defer { restoreHandlers() }
+            return try publish()
         }
     }
 
     func restore() {
-        sources.forEach { $0.cancel() }
-        signal(SIGINT, SIG_DFL)
-        signal(SIGTERM, SIG_DFL)
+        queue.sync { restoreHandlers() }
+    }
+
+    private func restoreHandlers() {
+        for (number, entry) in sources {
+            entry.source.cancel()
+            signal(number, entry.previous)
+        }
+        sources.removeAll()
     }
 }

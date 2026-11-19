@@ -87,7 +87,7 @@ users do not expect a screen recorder to do it.
 A recording runs until something calls `Control.stop()`: Ctrl+C or `kill` on the command line, the Stop button in the
 GUI, or the `--duration` timer. The first signal is caught rather than allowed to end the process, so the file is
 closed properly; a second one aborts at once and discards the recording, for when saving hangs. The signal handlers run
-on their own queue, so they work even while the main thread is busy, and the default behaviour is restored afterwards.
+on their own queue, so they work even while the main thread is busy, and the previous signal handlers are restored when publishing ends.
 If ScreenCaptureKit stops the stream on its own, the recording ends the same way, and what was recorded until then is
 saved.
 
