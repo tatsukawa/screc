@@ -16,6 +16,7 @@ func microphones() -> [AVCaptureDevice] {
 /// `query` is part of a name, or an ID. Without one, the system's default input is used, unless that is a Bluetooth
 /// device and a built-in microphone exists. Using a Bluetooth headset's microphone switches the headset to its low-quality
 /// call mode, which makes everything the user hears sound bad for as long as the recording runs.
+@MainActor
 func chooseMicrophone(_ query: String?) -> AVCaptureDevice? {
     let all = microphones()
     if let query {

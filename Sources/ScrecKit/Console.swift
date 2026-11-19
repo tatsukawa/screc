@@ -16,11 +16,10 @@ var showsFailuresInDialog = false
 /// Prints `screc: <message>` to standard error and exits with status 1.
 ///
 /// - Parameter systemSettings: A System Settings pane that fixes the problem; the dialog offers to open it.
+@MainActor
 func fail(_ message: String, systemSettings: URL? = nil) -> Never {
     say("screc: " + message)
-    if showsFailuresInDialog && Thread.isMainThread {
-        MainActor.assumeIsolated { showFailureDialog(message, systemSettings: systemSettings) }
-    }
+    if showsFailuresInDialog { showFailureDialog(message, systemSettings: systemSettings) }
     exit(1)
 }
 

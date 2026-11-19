@@ -1,6 +1,7 @@
 import ScreenCaptureKit
 
 /// Asks the system what can be recorded. Exits with instructions if the screen recording permission is missing.
+@MainActor
 func shareableContent() async -> SCShareableContent {
     do {
         return try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
@@ -57,6 +58,7 @@ func ordinaryWindows(_ content: SCShareableContent) -> [SCWindow] {
 /// A number is a window ID and must match exactly. Anything else must occur in exactly one window's "App — Title":
 /// when it matches several, recording the front-most one could capture a window the user did not mean, and that window
 /// may show something private, so it is an error that lists the candidates instead.
+@MainActor
 func findWindow(_ query: String, in windows: [SCWindow]) -> SCWindow {
     if let id = CGWindowID(query) {
         guard let window = windows.first(where: { $0.windowID == id }) else { fail("there is no window with the ID \(id) (see --list)") }
@@ -72,6 +74,7 @@ func findWindow(_ query: String, in windows: [SCWindow]) -> SCWindow {
 }
 
 /// Implements `--list`.
+@MainActor
 func listTargets() async {
     let content = await shareableContent()
     print("Displays (--display):")

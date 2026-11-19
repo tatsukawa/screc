@@ -127,6 +127,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
 }
 
 /// Allocates staging only after checking that the destination directory exists.
+@MainActor
 private func prepareOutput(for options: Options) -> OutputFile {
     let destination = destinationURL(for: options)
     let directory = destination.deletingLastPathComponent()
@@ -170,6 +171,7 @@ private func saveRecording(_ movie: MovieWriter, output: OutputFile, signals: St
 }
 
 /// Works out what to capture: one window, part of a display, or a whole display.
+@MainActor
 private func resolveTarget(_ options: Options, in content: SCShareableContent, excluding hidden: [CGWindowID]) -> CaptureTarget {
     if let id = options.windowID {
         guard let window = ordinaryWindows(content).first(where: { $0.windowID == id }) else { fail("the window you picked is no longer on screen") }
@@ -226,6 +228,7 @@ func destinationURL(for options: Options, now: Date = Date()) -> URL {
     return URL(fileURLWithPath: name).absoluteURL
 }
 
+@MainActor
 private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: CGRect?) -> SCStreamConfiguration {
     let configuration = SCStreamConfiguration()
     configuration.width = plan.width
