@@ -43,13 +43,7 @@ final class Picker {
         self.settings = settings
         model = PickerModel(displays: displays, windows: windows, pointer: pointer)
         // `--gui --region` starts with that region selected, on the display `--display` names.
-        if let region = options.region, let display = displays.first(where: { $0.index == options.display }) {
-            let rect = region.intersection(CGRect(origin: .zero, size: display.frame.size))
-            if !rect.isNull {
-                model.mode = .region
-                model.region = PickRegion(display: display.index, rect: rect)
-            }
-        }
+        if let region = options.region { model.selectRegion(region, on: options.display) }
         toolbar = PickerToolbar(mode: model.mode, microphones: microphones)
 
         // Weak: the toolbar lives in an overlay window, which can outlive the picker for a moment.
@@ -170,7 +164,8 @@ final class Picker {
     /// Brings every view in line with the model: the overlays, the summary line, the options menu.
     func refresh() {
         var parts = [["Display", "Window", "Region"][model.mode.rawValue]]
-        if let selection = model.selection {
+        let selection = model.selection
+        if let selection {
             let plan = VideoPlan(points: selection.size, pixelScale: selection.display.scale, options: recordingOptions)
             parts.append("\(plan.width) × \(plan.height)")
             parts.append("up to about \(formatBytes(plan.bytesPerHour)) per hour")
@@ -182,7 +177,7 @@ final class Picker {
 
         toolbar.update(
             caption: parts.joined(separator: "  ·  "),
-            canRecord: model.mode == .display || (model.mode == .region && model.region != nil),
+            canRecord: model.mode != .window && selection != nil,
             settings: settings)
         for view in overlays { view.needsDisplay = true }
     }

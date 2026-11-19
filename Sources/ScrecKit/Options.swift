@@ -7,7 +7,7 @@ let usage = """
            screc [options] [output.mp4]   record as the options say (command line)
 
       Without an output file, the recording is saved as Recording-<date>.mp4 in the current directory, or in the
-      directory given with --output-dir. (The GUI uses the save folder from its Settings.)
+      directory given with --output-dir. (The GUI uses the Save to folder in its Options menu.)
       Stop with Ctrl+C on the command line, or with the Stop button that appears at the top of the screen in the GUI
       (the menu bar has one too).
 
@@ -36,7 +36,7 @@ let usage = """
     Other
       --duration SEC     stop automatically after this many seconds (at most one week)
       --gui              open the GUI, starting from the other options; with --region (and --display),
-                         that region is selected (e.g. screc --gui --hevc --region 0,0,1280,720)
+                         that region is selected if available. Otherwise, draw a new region.
       -h, --help         show this help
     """
 

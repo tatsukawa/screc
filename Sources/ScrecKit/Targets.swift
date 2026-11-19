@@ -22,6 +22,13 @@ func shareableContent() async -> SCShareableContent {
     }
 }
 
+/// Clips a region to its display. The capture needs at least 16 points on each axis.
+func recordableRegion(_ region: CGRect, in displaySize: CGSize) -> CGRect? {
+    let clipped = region.intersection(CGRect(origin: .zero, size: displaySize))
+    guard !clipped.isNull, clipped.width >= 16, clipped.height >= 16 else { return nil }
+    return clipped
+}
+
 /// "App — Title", the name under which a window is listed and can be matched with `--window`.
 func label(_ window: SCWindow) -> String {
     [window.owningApplication?.applicationName, window.title].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " — ")

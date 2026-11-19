@@ -179,8 +179,7 @@ private func resolveTarget(_ options: Options, in content: SCShareableContent, e
     var description = "display \(index) (\(display.width)x\(display.height) pt)"
     var sourceRect: CGRect?
     if let region = options.region {
-        let clipped = region.intersection(CGRect(x: 0, y: 0, width: display.width, height: display.height))
-        guard !clipped.isNull, clipped.width >= 16, clipped.height >= 16 else {
+        guard let clipped = recordableRegion(region, in: CGSize(width: display.width, height: display.height)) else {
             fail("--region lies outside the display (\(display.width)x\(display.height) pt) or is too small")
         }
         sourceRect = clipped

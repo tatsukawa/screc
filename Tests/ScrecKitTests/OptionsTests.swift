@@ -126,6 +126,11 @@ final class OptionsTests: XCTestCase {
         XCTAssertEqual(options.region, CGRect(x: 0, y: 0, width: 640, height: 360))
     }
 
+    func testHelpNamesTheOptionsMenuAndExplainsUnavailableGUIRegions() {
+        XCTAssertTrue(usage.contains("Save to folder in its Options menu"))
+        XCTAssertTrue(usage.contains("Otherwise, draw a new region"))
+    }
+
     func testBoundaryValuesAreAccepted() throws {
         XCTAssertEqual(try Options.parse(["--duration", "604800"]).duration, 604_800)
         XCTAssertEqual(try Options.parse(["--fps", "1"]).fps, 1)

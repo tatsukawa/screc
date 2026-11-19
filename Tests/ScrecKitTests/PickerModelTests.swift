@@ -89,6 +89,28 @@ final class PickerModelTests: XCTestCase {
         XCTAssertNil(makeModel(region: rect(10, 10, 100, 100)).hint)
     }
 
+    func testAnUnavailablePresetStaysInRegionModeWithoutSelectingADisplay() {
+        var model = makeModel()
+        for (index, region) in [(99, rect(0, 0, 200, 200)), (0, rect(width + 1, 0, 200, 200)),
+                                (0, rect(width - 8, 0, 200, 200))] {
+            model.selectRegion(region, on: index)
+            XCTAssertEqual(model.mode, .region)
+            XCTAssertNil(model.region)
+            XCTAssertNil(model.selection)
+        }
+    }
+
+    func testAnUndersizedDragCannotBeRecordedBeforeMouseUp() {
+        var model = makeModel(mode: .region)
+        let display = displays[0]
+        let drag = model.beginDrag(at: point(100, 100), on: display)
+        model.continueDrag(drag, to: point(108, 110), on: display)
+        XCTAssertNotNil(model.region)
+        XCTAssertNil(model.selection)
+        model.continueDrag(drag, to: point(116, 116), on: display)
+        XCTAssertNotNil(model.selection)
+    }
+
     func testSelectionDecidesTheOptionsByID() {
         var options = Options()
         options.window = "Safari"  // anything from the command line is replaced

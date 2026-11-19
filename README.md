@@ -160,7 +160,7 @@ Ctrl+C aborts and discards the recording.
 | `--hevc`             | HEVC instead of H.264: smaller at the same quality, but less widely supported  |
 | `--duration SEC`     | Stop after this many seconds (at most one week)                                |
 | `--list`             | List displays, windows and microphones, then exit                              |
-| `--gui`              | Open the picker, starting from the other options; with `--region` (and `--display`), that region is selected |
+| `--gui`              | Open the picker, starting from the other options; with `--region` (and `--display`), that region is selected if available. Otherwise, draw a new region. |
 | `-h`, `--help`       | Show the help                                                                  |
 
 An argument that is not an option is the output file.

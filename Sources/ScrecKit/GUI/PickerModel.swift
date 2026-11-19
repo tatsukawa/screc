@@ -92,8 +92,6 @@ enum RegionDrag {
 struct PickerModel {
     /// How close to a region's edge a click still grabs the edge.
     static let gripMargin: CGFloat = 8
-    /// Regions smaller than this (in either direction) are discarded; they are accidental clicks.
-    static let minimumRegionSize: CGFloat = 16
 
     var displays: [PickDisplay]
     /// Front-most first.
@@ -109,6 +107,14 @@ struct PickerModel {
         self.pointer = pointer
     }
 
+    /// Keeps the picker in region mode even if the requested display or region is unavailable.
+    mutating func selectRegion(_ requested: CGRect, on index: Int) {
+        mode = .region
+        region = displays.first { $0.index == index }.flatMap { display in
+            recordableRegion(requested, in: display.frame.size).map { PickRegion(display: index, rect: $0) }
+        }
+    }
+
     var hoveredWindow: PickWindow? { windows.first { $0.frame.contains(pointer) } }
     var hoveredDisplay: PickDisplay? { displays.first { $0.frame.contains(pointer) } }
 
@@ -122,8 +128,10 @@ struct PickerModel {
             guard let window = hoveredWindow, let display = hoveredDisplay else { return nil }
             return PickSelection(target: .window(window.id), display: display, size: window.frame.size)
         case .region:
-            guard let region, let display = displays.first(where: { $0.index == region.display }) else { return nil }
-            return PickSelection(target: .region(display, region.rect), display: display, size: region.rect.size)
+            guard let region, let display = displays.first(where: { $0.index == region.display }),
+                let rect = recordableRegion(region.rect, in: display.frame.size)
+            else { return nil }
+            return PickSelection(target: .region(display, rect), display: display, size: rect.size)
         }
     }
 
@@ -203,6 +211,6 @@ struct PickerModel {
 
     /// Ends a drag. A region that came out too small was just a click, so it is dropped.
     mutating func endDrag() {
-        if let rect = region?.rect, rect.width < Self.minimumRegionSize || rect.height < Self.minimumRegionSize { region = nil }
+        if selection == nil { region = nil }
     }
 }
