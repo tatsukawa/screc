@@ -71,9 +71,10 @@ final class Picker {
         case .saveFolder(let folder): change = { $0.saveFolder = folder }
         case .otherFolder:
             // The overlays would hide the folder dialog, so they step aside while it is open.
-            hide()
+            let wasShown = keyMonitor != nil
+            if wasShown { hide() }
             let folder = chooseFolder(settings.saveFolder.url)
-            show()
+            if wasShown { show() }
             guard let folder else { return }
             change = { $0.saveFolder = .custom(folder) }
         case .microphone(let id): change = { $0.microphoneID = id }

@@ -169,6 +169,7 @@ final class PickerUITests: XCTestCase {
         picker.chooseFolder = { _ in nil }
         try choose("Other Location…", in: picker)
         XCTAssertEqual(try menuItem("Movies", in: picker).state, .on)
+        XCTAssertTrue(picker.overlays.allSatisfy { $0.window?.isVisible == false })
     }
 
     func testChoicesAreRememberedForNextTime() throws {
