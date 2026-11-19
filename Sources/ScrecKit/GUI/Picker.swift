@@ -174,7 +174,7 @@ final class Picker {
         if let selection {
             let plan = VideoPlan(points: selection.size, pixelScale: selection.display.scale, options: recordingOptions)
             parts.append("\(plan.width) × \(plan.height)")
-            parts.append("up to about \(formatBytes(plan.bytesPerHour)) per hour")
+            parts.append("estimated \(formatBytes(plan.bytesPerHour)) per hour")
         }
         parts.append(settings.quality.title)
         let microphone = microphones.first { $0.id == settings.microphoneID }

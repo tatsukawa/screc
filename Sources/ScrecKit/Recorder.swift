@@ -101,7 +101,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
     say("""
         ● Recording \(target.description)
           \(plan.width)x\(plan.height) \(options.fps)fps \(options.hevc ? "HEVC" : "H.264") \(plan.megabits)\
-         (up to about \(formatBytes(plan.bytesPerHour)) per hour)
+         (estimated \(formatBytes(plan.bytesPerHour)) per hour)
           → \(output.destination.path)
           Stop with: \(control.stopHint)
         """)

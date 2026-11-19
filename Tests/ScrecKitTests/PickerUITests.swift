@@ -262,6 +262,7 @@ final class PickerUITests: XCTestCase {
     func testTheSummaryShowsTheOutputSizeForTheSelection() throws {
         let picker = makePicker()
         XCTAssertTrue(summary(of: picker).contains("3600 × 2338"))
+        XCTAssertTrue(summary(of: picker).contains("estimated 5.8 GB per hour"))
         try selectMode(.window, in: picker)
         XCTAssertTrue(summary(of: picker).contains("1400 × 900"))
     }

@@ -21,8 +21,7 @@ struct VideoPlan: Equatable {
         bitrate = options.bitrate.map { Int($0 * 1_000_000) } ?? max(300_000, Int(automatic))
     }
 
-    /// The size of one hour of recording, as an upper bound. The encoder uses less than the target bitrate while the
-    /// screen barely changes, so the real size is usually smaller.
+    /// Estimates the size of one hour of recording from the target video and audio bitrates.
     var bytesPerHour: Double { Double(bitrate + MovieSettings.audioBitrate) / 8 * 3600 }
 
     /// The video bitrate for display, for example "12.6 Mbps".

@@ -67,8 +67,8 @@ recording stops instead of running on while nothing is saved.
   300 kbps. `--bitrate` replaces this figure.
 - Audio is AAC at 160 kbps.
 
-The size estimate is simply (video bitrate + audio bitrate) × one hour. It is an upper bound: the encoder uses less
-than its target when little changes on screen.
+The size estimate uses the target audio and video bitrates. Actual size varies with the content and encoder output,
+and MP4 container overhead adds to the file size.
 
 ## The microphone
 

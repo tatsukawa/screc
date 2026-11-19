@@ -88,8 +88,8 @@ Open the screc app, or run `./screc` without options. The screen dims and a tool
 - **Region**: drag out a rectangle. Drag inside it to move it, also onto another display, and drag its edges or
   corners to resize it. Then press Enter or click Record.
 
-The line under the toolbar shows what will be recorded, at which resolution, and at most how much disk space one hour
-of it takes. The toolbar can be moved by dragging its edge. The microphone and quality chosen under Options are
+The line under the toolbar shows what will be recorded, at which resolution, and how much disk space one hour
+is estimated to take. The toolbar can be moved by dragging its edge. The microphone and quality chosen under Options are
 remembered for next time.
 
 While recording, a panel at the top of the screen shows the elapsed time and a **Stop** button. The menu bar has the
@@ -177,19 +177,19 @@ in the Options menu. `--list` shows which microphone `--mic` would use.
 
 ## File size
 
-When a recording starts, screc prints the most that one hour of it can take, and the picker shows the same estimate.
+When a recording starts, screc estimates its size per hour, and the picker shows the same estimate.
 For a 1800 × 1169-point Retina display recorded in full:
 
-| Settings          | Resolution  | Video bitrate | One hour, at most |
+| Settings          | Resolution  | Video bitrate | One-hour estimate |
 | ----------------- | ----------- | ------------- | ----------------- |
 | `--quality high`  | 3600 × 2338 | 25.3 Mbps     | 11.4 GB           |
 | default           | 3600 × 2338 | 12.6 Mbps     | 5.8 GB            |
 | `--hevc`          | 3600 × 2338 | 7.6 Mbps      | 3.5 GB            |
 | `--quality low`   | 1800 × 1168 | 3.2 Mbps      | 1.5 GB            |
 
-These are upper bounds. ScreenCaptureKit only delivers a frame when something on the screen changes, and the encoder
-uses less than its target bitrate for content that barely moves, so real recordings are often much smaller. When a
-recording ends, screc prints its actual size and the hourly rate it worked out to.
+Actual file sizes vary. The encoder often uses less than its target bitrate for content that barely moves, and the
+MP4 container adds some overhead. When a recording ends, screc prints its actual size and the hourly rate it worked
+out to.
 
 ## More
 
