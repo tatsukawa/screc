@@ -46,12 +46,16 @@ public func mixAudioTracks(of url: URL) async throws {
     guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
     writer.startSession(atSourceTime: .zero)
 
-    await pump([(videoOutput, videoInput), (audioOutput, audioInput)])
-
-    guard writer.status == .writing, reader.status == .completed else {
+    do {
+        try await pump([(videoOutput, videoInput), (audioOutput, audioInput)])
+        guard writer.status == .writing, reader.status == .completed else {
+            throw writer.error ?? reader.error ?? CocoaError(.fileWriteUnknown)
+        }
+    } catch {
+        let failure = writer.error ?? reader.error ?? error
         reader.cancelReading()
         writer.cancelWriting()
-        throw writer.error ?? reader.error ?? CocoaError(.fileWriteUnknown)
+        throw failure
     }
     await writer.finishWriting()
     guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
@@ -63,13 +67,14 @@ public func mixAudioTracks(of url: URL) async throws {
 ///
 /// Returns once every track has been copied, or as soon as an append fails. An append fails when the writer has failed,
 /// and then an input that is waiting to become ready is never called again, so waiting for it would hang.
-private func pump(_ pairs: [(output: AVAssetReaderOutput, input: AVAssetWriterInput)]) async {
-    await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-        let completion = PumpCompletion(count: pairs.count, done: done)
-        for (index, pair) in pairs.enumerated() {
-            var finished = false  // Only touched on this pair's queue.
-            pair.input.requestMediaDataWhenReady(on: DispatchQueue(label: "screc.mix.\(index)")) {
-                guard !finished else { return }
+private func pump(_ pairs: [(output: AVAssetReaderOutput, input: AVAssetWriterInput)]) async throws {
+    let queue = DispatchQueue(label: "screc.mix")
+    try await withCheckedThrowingContinuation { continuation in
+        let completion = PumpCompletion(count: pairs.count, done: continuation)
+        for pair in pairs {
+            var finished = false
+            pair.input.requestMediaDataWhenReady(on: queue) {
+                guard !finished, !completion.isFinished else { return }
                 while pair.input.isReadyForMoreMediaData {
                     guard let sample = pair.output.copyNextSampleBuffer() else {  // The end of this track.
                         finished = true
@@ -77,8 +82,7 @@ private func pump(_ pairs: [(output: AVAssetReaderOutput, input: AVAssetWriterIn
                         completion.trackFinished()
                         return
                     }
-                    guard pair.input.append(sample) else {  // The writer has failed.
-                        finished = true
+                    guard pair.input.append(sample) else {
                         completion.failed()
                         return
                     }
@@ -88,31 +92,30 @@ private func pump(_ pairs: [(output: AVAssetReaderOutput, input: AVAssetWriterIn
     }
 }
 
-/// Resumes the waiting `pump` exactly once: when every track is done, or at the first failure.
-private final class PumpCompletion {
-    private let lock = NSLock()
+/// Completes the mix exactly once. Track callbacks share a queue so they stop touching the reader and writer on failure.
+final class PumpCompletion {
     private var remaining: Int
-    private var done: CheckedContinuation<Void, Never>?
+    private var done: CheckedContinuation<Void, Error>?
+    var isFinished: Bool { done == nil }
 
-    init(count: Int, done: CheckedContinuation<Void, Never>) {
+    init(count: Int, done: CheckedContinuation<Void, Error>) {
         remaining = count
         self.done = done
     }
 
     func trackFinished() {
-        lock.withLock {
-            remaining -= 1
-            if remaining == 0 { resume() }
-        }
+        guard !isFinished else { return }
+        remaining -= 1
+        if remaining == 0 { complete(with: .success(())) }
     }
 
     func failed() {
-        lock.withLock { resume() }
+        complete(with: .failure(CocoaError(.fileWriteUnknown)))
     }
 
-    /// Call with the lock held.
-    private func resume() {
-        done?.resume()
+    private func complete(with result: Result<Void, Error>) {
+        let continuation = done
         done = nil
+        continuation?.resume(with: result)
     }
 }
