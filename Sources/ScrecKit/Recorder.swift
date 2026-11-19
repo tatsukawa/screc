@@ -13,7 +13,7 @@ enum Event {
 /// The command line stops it with a signal (Ctrl+C) and the GUI with its stop button; both call `stop()`.
 final class Control {
     let events: AsyncStream<Event>
-    let continuation: AsyncStream<Event>.Continuation
+    private let continuation: AsyncStream<Event>.Continuation
     /// Called once the recording has actually started.
     var onStart: (() -> Void)?
     /// Called once the recording begins to stop, whatever stopped it, before the file is finished.
@@ -32,6 +32,21 @@ final class Control {
 
     /// Asks the recording to stop. Safe to call from any thread.
     func stop() { continuation.yield(.stopRequested) }
+
+    /// Delivers capture and encoder failures on the same stream as requests to stop.
+    func reportFailure(_ error: Error) { continuation.yield(.failed(error)) }
+
+    /// Schedules the duration limit. A manual stop or a failure cancels the task.
+    func stop(after duration: Duration) -> Task<Void, Never> {
+        Task { [weak self] in
+            do {
+                try await Task.sleep(for: duration)
+            } catch {
+                return
+            }
+            self?.stop()
+        }
+    }
 }
 
 /// What a recording captures.
@@ -73,7 +88,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         output.discard()
         fail("cannot create the recording: \(error.localizedDescription)")
     }
-    movie.onFailure = { control.continuation.yield(.failed($0)) }
+    movie.onFailure = control.reportFailure
     let stream = SCStream(filter: target.filter, configuration: configuration, delegate: movie)
 
     let signals = StopSignals(control: control) {
@@ -102,18 +117,14 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         """)
     control.onStart?()
 
-    if let duration = options.duration {
-        Task {
-            try? await Task.sleep(for: .seconds(duration))
-            control.stop()
-        }
-    }
+    let durationTimer = options.duration.map { control.stop(after: .seconds($0)) }
 
     // Wait for the first event: either someone asks to stop, or the recording fails.
     for await event in control.events {
         if case .failed(let error) = event { say("screc: the recording was interrupted: \(error.localizedDescription)") }
         break
     }
+    durationTimer?.cancel()
     control.onStopping?()
     say("■ Stopping… (press Ctrl+C again to abort without saving)")
     try? await stream.stopCapture()  // Throws if the stream has already stopped by itself, which is fine.
