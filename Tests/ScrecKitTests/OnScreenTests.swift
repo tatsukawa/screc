@@ -216,26 +216,27 @@ final class OnScreenTests: XCTestCase {
         let deadline = Date().addingTimeInterval(3)
         // A menu runs its own event loop while it is open, so the picture is taken from a timer inside that loop, as
         // soon as the window server lists the menu's window (waiting a fixed time is not reliable on a first run).
-        let timer = Timer(timeInterval: 0.1, repeats: true) { timer in
-            MainActor.assumeIsolated {
-                let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-                let menus = list.filter {
-                    ($0[kCGWindowOwnerPID as String] as? Int32) == getpid()
-                        && ($0[kCGWindowLayer as String] as? Int ?? 0) >= Int(CGWindowLevelForKey(.popUpMenuWindow))
-                }
-                guard !menus.isEmpty || Date() > deadline else { return }
-                timer.invalidate()
-                self.spin(0.3)  // let it finish drawing
-                let ids = menus.compactMap { $0[kCGWindowNumber as String] as? CGWindowID }
-                let bounds = menus.compactMap {
-                    ($0[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
-                }
-                do {
-                    guard !ids.isEmpty else { throw NSError(domain: "screc-tests", code: 1, userInfo: [NSLocalizedDescriptionKey: "the menu never appeared"]) }
-                    try self.writeSnapshot(ofScreenRect: bounds.reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -20, dy: -20), windowIDs: ids, to: path)
-                } catch { failure = error }
-                menu.cancelTracking()
+        let captureMenu: @MainActor @Sendable (Timer) -> Void = { timer in
+            let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+            let menus = list.filter {
+                ($0[kCGWindowOwnerPID as String] as? Int32) == getpid()
+                    && ($0[kCGWindowLayer as String] as? Int ?? 0) >= Int(CGWindowLevelForKey(.popUpMenuWindow))
             }
+            guard !menus.isEmpty || Date() > deadline else { return }
+            timer.invalidate()
+            self.spin(0.3)  // let it finish drawing
+            let ids = menus.compactMap { $0[kCGWindowNumber as String] as? CGWindowID }
+            let bounds = menus.compactMap {
+                ($0[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+            }
+            do {
+                guard !ids.isEmpty else { throw NSError(domain: "screc-tests", code: 1, userInfo: [NSLocalizedDescriptionKey: "the menu never appeared"]) }
+                try self.writeSnapshot(ofScreenRect: bounds.reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -20, dy: -20), windowIDs: ids, to: path)
+            } catch { failure = error }
+            menu.cancelTracking()
+        }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { timer in
+            MainActor.assumeIsolated { captureMenu(timer) }
         }
         RunLoop.main.add(timer, forMode: .common)
         // Open it near the top of the screen, so that the whole menu fits below it.
