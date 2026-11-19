@@ -11,6 +11,7 @@ final class SessionTests: XCTestCase {
         var recorded: [Options] = []
         var quits = 0
         var pickersMade = 0
+        var presentations = 0
     }
 
     func makeSession(staysOpen: Bool, log: Log) -> GUISession {
@@ -25,7 +26,10 @@ final class SessionTests: XCTestCase {
                     windows: [], microphones: [], pointer: CGPoint(x: 400, y: 300))
             },
             recordPicked: { log.recorded.append($0) })
-        session.present = { $0.makeOverlays() }  // never on screen
+        session.present = { picker in
+            log.presentations += 1
+            if picker.overlays.isEmpty { picker.makeOverlays() }
+        }
         session.quit = { log.quits += 1 }
         return session
     }
@@ -83,6 +87,7 @@ final class SessionTests: XCTestCase {
         session.newRecording()
         await settle { false }
         XCTAssertEqual(log.pickersMade, 1)
+        XCTAssertEqual(log.presentations, 3)
         XCTAssertEqual(session.state, .choosing)
     }
 

@@ -20,9 +20,9 @@ final class GUISession {
 
     /// Builds a picker for what is on screen now. Replaced in tests.
     var makePicker: (Options) async -> Picker
-    /// Puts a picker on screen. Replaced in tests, which must not cover the screen.
+    /// Shows or brings forward a picker. Replaced in tests, which must not cover the screen.
     var present: (Picker) -> Void = { picker in
-        picker.makeOverlays()
+        if picker.overlays.isEmpty { picker.makeOverlays() }
         picker.show()
     }
     /// Records what was picked and does what the settings say with the file.
@@ -42,7 +42,7 @@ final class GUISession {
     func newRecording() {
         switch state {
         case .choosing:
-            picker?.show()
+            if let picker { present(picker) }
         case .recording:
             RecordingIndicator.current?.panel.orderFrontRegardless()
         case .idle:
