@@ -193,6 +193,18 @@ final class PickerUITests: XCTestCase {
         XCTAssertEqual(try menuItem("Documents", in: next).state, .on)
     }
 
+    func testChoosingOneSettingLeavesUnrelatedStoredValuesAlone() throws {
+        let defaults = TemporaryDefaults()
+        defaults.store.set("future-preset", forKey: "quality")
+        let picker = makePicker(store: defaults.store)
+        try choose("Desktop", in: picker)
+        XCTAssertEqual(defaults.store.string(forKey: "saveFolder"), "desktop")
+        XCTAssertEqual(defaults.store.string(forKey: "quality"), "future-preset")
+        XCTAssertNil(defaults.store.object(forKey: "fps"))
+        try choose(Quality.medium.title, in: picker)
+        XCTAssertEqual(defaults.store.string(forKey: "quality"), Quality.medium.rawValue)
+    }
+
     func testCommandLineOptionsAreShownButNotRemembered() throws {
         let defaults = TemporaryDefaults()
         let options = try Options.parse(["--gui", "--quality", "high", "--hevc", "--no-cursor"])

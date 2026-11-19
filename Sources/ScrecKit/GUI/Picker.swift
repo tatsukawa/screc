@@ -60,9 +60,11 @@ final class Picker {
 
     /// Applies a choice from the Options menu and remembers it for next time, as ⌘⇧5 does.
     func choose(_ choice: PickerChoice) {
-        var change: (inout Preferences) -> Void
+        let setting: Preferences.Setting
         switch choice {
-        case .saveFolder(let folder): change = { $0.saveFolder = folder }
+        case .saveFolder(let folder):
+            settings.saveFolder = folder
+            setting = .saveFolder
         case .otherFolder:
             // The overlays would hide the folder dialog, so they step aside while it is open.
             let wasShown = keyMonitor != nil
@@ -70,21 +72,28 @@ final class Picker {
             let folder = chooseFolder(settings.saveFolder.url)
             if wasShown { show() }
             guard let folder else { return }
-            change = { $0.saveFolder = .custom(folder) }
-        case .microphone(let id): change = { $0.microphoneID = id }
-        case .quality(let quality): change = { $0.quality = quality }
-        case .hevc(let hevc): change = { $0.hevc = hevc }
-        case .fps(let fps): change = { $0.fps = fps }
-        case .showsCursor(let shows): change = { $0.showsCursor = shows }
-        case .afterSaving(let action): change = { $0.afterSaving = action }
+            settings.saveFolder = .custom(folder)
+            setting = .saveFolder
+        case .microphone(let id):
+            settings.microphoneID = id
+            setting = .microphone
+        case .quality(let quality):
+            settings.quality = quality
+            setting = .quality
+        case .hevc(let hevc):
+            settings.hevc = hevc
+            setting = .hevc
+        case .fps(let fps):
+            settings.fps = fps
+            setting = .fps
+        case .showsCursor(let shows):
+            settings.showsCursor = shows
+            setting = .showsCursor
+        case .afterSaving(let action):
+            settings.afterSaving = action
+            setting = .afterSaving
         }
-        change(&settings)
-        // Only the setting that was chosen is stored, so that options given on the command line are not saved with it.
-        if let store {
-            var stored = Preferences.load(from: store)
-            change(&stored)
-            stored.save(to: store)
-        }
+        if let store { settings.save(setting, to: store) }
         refresh()
     }
 

@@ -79,14 +79,21 @@ struct Preferences: Equatable {
         return preferences
     }
 
-    func save(to defaults: UserDefaults = store) {
-        defaults.set(saveFolder.stored, forKey: Key.saveFolder)
-        defaults.set(quality.rawValue, forKey: Key.quality)
-        defaults.set(hevc, forKey: Key.hevc)
-        defaults.set(fps, forKey: Key.fps)
-        defaults.set(showsCursor, forKey: Key.showsCursor)
-        defaults.set(microphoneID, forKey: Key.microphoneID)
-        defaults.set(afterSaving.rawValue, forKey: Key.afterSaving)
+    /// The individual values a picker choice can persist.
+    enum Setting: CaseIterable {
+        case saveFolder, quality, hevc, fps, showsCursor, microphone, afterSaving
+    }
+
+    func save(_ setting: Setting, to defaults: UserDefaults) {
+        switch setting {
+        case .saveFolder: defaults.set(saveFolder.stored, forKey: Key.saveFolder)
+        case .quality: defaults.set(quality.rawValue, forKey: Key.quality)
+        case .hevc: defaults.set(hevc, forKey: Key.hevc)
+        case .fps: defaults.set(fps, forKey: Key.fps)
+        case .showsCursor: defaults.set(showsCursor, forKey: Key.showsCursor)
+        case .microphone: defaults.set(microphoneID, forKey: Key.microphoneID)
+        case .afterSaving: defaults.set(afterSaving.rawValue, forKey: Key.afterSaving)
+        }
     }
 
     /// The settings to start the picker with: these, except where the command line said otherwise.

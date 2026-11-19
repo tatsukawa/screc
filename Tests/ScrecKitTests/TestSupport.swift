@@ -41,3 +41,10 @@ extension OverlayView {
 
     func click(at point: CGPoint) { drag(point) }
 }
+
+extension Preferences {
+    /// Seeds a complete set of preferences in a test's temporary defaults domain.
+    func save(to defaults: UserDefaults) {
+        for setting in Setting.allCases { save(setting, to: defaults) }
+    }
+}
