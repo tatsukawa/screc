@@ -52,19 +52,22 @@ final class GUISession {
     }
 
     private func open(_ picker: Picker) {
-        picker.onPick = { [weak self] picked in Task { @MainActor in await self?.record(picked) } }
+        picker.onPick = { [weak self] picked in self?.beginRecording(picked) }
         picker.onCancel = { [weak self] in self?.cancelled() }
         self.picker = picker
         Picker.current = picker
         present(picker)
     }
 
-    private func record(_ picked: Options) async {
-        dismissPicker()
+    private func beginRecording(_ picked: Options) {
+        // A reopen arriving before the task starts must not bring back the closed picker.
         state = .recording
-        await recordPicked(picked)
-        state = .idle
-        ended()
+        dismissPicker()
+        Task {
+            await recordPicked(picked)
+            state = .idle
+            ended()
+        }
     }
 
     private func cancelled() {

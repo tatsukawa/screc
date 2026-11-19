@@ -58,6 +58,10 @@ final class SessionTests: XCTestCase {
         XCTAssertEqual(session.state, .choosing)
 
         picker.start()
+        XCTAssertEqual(session.state, .recording)
+        XCTAssertNil(session.picker)
+        session.newRecording()
+        XCTAssertEqual(log.presentations, 1, "reopening must not show the old picker")
         await settle { session.state == .idle }
         XCTAssertEqual(log.recorded.count, 1)
         XCTAssertEqual(log.quits, 0, "an app does not quit after a recording")
