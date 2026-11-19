@@ -70,17 +70,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         options: options)
     let configuration = makeConfiguration(options, plan: plan, sourceRect: target.sourceRect)
 
-    let destination = destinationURL(for: options)
-    var isDirectory: ObjCBool = false
-    guard FileManager.default.fileExists(atPath: destination.deletingLastPathComponent().path, isDirectory: &isDirectory), isDirectory.boolValue else {
-        fail("the folder \(destination.deletingLastPathComponent().path) does not exist")
-    }
-    let output: OutputFile
-    do {
-        output = try OutputFile(destination: destination)
-    } catch {
-        fail("\(error)")
-    }
+    let output = prepareOutput(for: options)
     let movie: MovieWriter
     do {
         movie = try MovieWriter(url: output.recording, settings: plan.movieSettings(for: options))
@@ -129,7 +119,31 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
     say("■ Stopping… (press Ctrl+C again to abort without saving)")
     try? await stream.stopCapture()  // Throws if the stream has already stopped by itself, which is fine.
     let seconds = Date().timeIntervalSince(began)
+    let saved = await saveRecording(movie, output: output, signals: signals)
+    let bytes = Double((try? FileManager.default.attributesOfItem(atPath: saved.path)[.size] as? Int) ?? 0)
+    say("Saved: \(saved.path)")
+    say("  \(formatBytes(bytes)) in \(formatClock(seconds)), about \(formatBytes(bytes / max(seconds, 1) * 3600)) per hour at this rate")
+    return saved
+}
 
+/// Allocates staging only after checking that the destination directory exists.
+private func prepareOutput(for options: Options) -> OutputFile {
+    let destination = destinationURL(for: options)
+    let directory = destination.deletingLastPathComponent()
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        fail("the folder \(directory.path) does not exist")
+    }
+    do {
+        return try OutputFile(destination: destination)
+    } catch {
+        fail("\(error)")
+    }
+}
+
+/// Finalizes the staged file before publishing it. A failed mix still leaves a complete recording to publish.
+@MainActor
+private func saveRecording(_ movie: MovieWriter, output: OutputFile, signals: StopSignals) async -> URL {
     do {
         try await movie.finish()
     } catch {
@@ -152,9 +166,6 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
     if saved != output.destination {
         say("screc: \(output.destination.lastPathComponent) appeared while recording, so this recording got another name")
     }
-    let bytes = Double((try? FileManager.default.attributesOfItem(atPath: saved.path)[.size] as? Int) ?? 0)
-    say("Saved: \(saved.path)")
-    say("  \(formatBytes(bytes)) in \(formatClock(seconds)), about \(formatBytes(bytes / max(seconds, 1) * 3600)) per hour at this rate")
     return saved
 }
 

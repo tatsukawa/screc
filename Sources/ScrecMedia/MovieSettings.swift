@@ -1,9 +1,17 @@
-import Foundation
+import AVFoundation
 
 /// How a recording is encoded.
 public struct MovieSettings: Sendable, Equatable {
     /// AAC bitrate of the audio tracks, in bits per second.
     public static let audioBitrate = 160_000
+
+    /// Both the initial tracks and the mix use the same AAC format.
+    static let aacOutputSettings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatMPEG4AAC,
+        AVSampleRateKey: 48_000,
+        AVNumberOfChannelsKey: 2,
+        AVEncoderBitRateKey: audioBitrate,
+    ]
 
     public var width: Int
     public var height: Int

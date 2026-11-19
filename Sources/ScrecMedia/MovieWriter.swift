@@ -38,12 +38,7 @@ public final class MovieWriter: NSObject, SCStreamOutput, SCStreamDelegate {
         ])
         // Microphones differ in format; the input converts whatever arrives to 48 kHz stereo AAC.
         for type in settings.microphone ? [SCStreamOutputType.audio, .microphone] : [.audio] {
-            inputs[type] = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 48_000,
-                AVNumberOfChannelsKey: 2,
-                AVEncoderBitRateKey: MovieSettings.audioBitrate,
-            ])
+            inputs[type] = AVAssetWriterInput(mediaType: .audio, outputSettings: MovieSettings.aacOutputSettings)
         }
         for input in inputs.values {
             input.expectsMediaDataInRealTime = true

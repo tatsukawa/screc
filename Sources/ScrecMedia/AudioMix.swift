@@ -33,12 +33,7 @@ public func mixAudioTracks(of url: URL) async throws {
     let videoInput = AVAssetWriterInput(
         mediaType: .video, outputSettings: nil,
         sourceFormatHint: try await videoTrack.load(.formatDescriptions).first)
-    let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-        AVFormatIDKey: kAudioFormatMPEG4AAC,
-        AVSampleRateKey: 48_000,
-        AVNumberOfChannelsKey: 2,
-        AVEncoderBitRateKey: MovieSettings.audioBitrate,
-    ])
+    let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: MovieSettings.aacOutputSettings)
     writer.add(videoInput)
     writer.add(audioInput)
 
