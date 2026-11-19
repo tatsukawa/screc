@@ -148,7 +148,7 @@ Ctrl+C aborts and discards the recording.
 | -------------------- | ------------------------------------------------------------------------------ |
 | `--display N`        | Record display `N` (default 0; see `--list`)                                   |
 | `--region X,Y,W,H`   | Record part of the display, in points from its top-left corner                 |
-| `--window NAME`      | Record one window: a window ID from `--list`, or text that occurs in exactly one window's "App — Title" (a name that matches several windows is an error, so that a broad name cannot record the wrong one) |
+| `--window NAME`      | Record one window: a window ID from `--list`, or text that occurs in exactly one window's "App — Title". All-digit arguments must be valid IDs. Ambiguous names are errors. |
 | `--mic`              | Also record a microphone (see below)                                           |
 | `--mic-device NAME`  | Record this microphone, by part of its name; implies `--mic`                   |
 | `--no-cursor`        | Leave the mouse pointer out of the recording                                   |

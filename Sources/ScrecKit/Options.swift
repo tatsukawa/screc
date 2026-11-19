@@ -15,7 +15,7 @@ let usage = """
       --display N        a whole display (default 0; the numbers are in --list)
       --region X,Y,W,H   part of a display (points, from its top-left corner)
       --window NAME      one window: a window ID from --list, or text found in exactly one window's
-                         "App — Title" (a name that matches several windows is an error)
+                         "App — Title". All-digit arguments must be valid IDs. Ambiguous names are errors.
       --mic              also record the microphone, mixed into the same audio track as the system audio.
                          Uses the default input, but the built-in microphone instead if that is a Bluetooth
                          device (a Bluetooth headset drops to call quality while its microphone is in use)
@@ -144,7 +144,12 @@ extension Options {
                 }
                 options.region = CGRect(x: x, y: y, width: width, height: height)
             case "--window":
-                options.window = try value(for: arg)
+                let query = try value(for: arg)
+                guard !query.isEmpty else { throw UsageError.invalid("--window needs a name or an ID (see --list)") }
+                if query.utf8.allSatisfy({ (48...57).contains($0) }), CGWindowID(query) == nil {
+                    throw UsageError.invalid("--window takes a valid window ID or a name (see --list)")
+                }
+                options.window = query
             case "--quality":
                 guard let quality = Quality(rawValue: try value(for: arg)) else {
                     throw UsageError.invalid("--quality is high, medium or low")

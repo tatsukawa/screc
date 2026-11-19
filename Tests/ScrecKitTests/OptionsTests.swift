@@ -59,6 +59,13 @@ final class OptionsTests: XCTestCase {
         XCTAssertTrue(try Options.parse(["--list"]).list)
     }
 
+    func testAnAllDigitWindowArgumentMustFitAWindowID() throws {
+        XCTAssertEqual(try Options.parse(["--window", "4294967295"]).window, "4294967295")
+        XCTAssertThrowsError(try Options.parse(["--window", "4294967296"]))
+        XCTAssertThrowsError(try Options.parse(["--window", ""]))
+        XCTAssertEqual(try Options.parse(["--window", "Report 4294967296"]).window, "Report 4294967296")
+    }
+
     func testOutputPathExpandsTheTilde() throws {
         let output = try XCTUnwrap(Options.parse(["~/clip.mp4"]).output)
         XCTAssertEqual(output.path, NSString(string: "~/clip.mp4").expandingTildeInPath)
