@@ -3,10 +3,14 @@
 Record your Mac's screen **together with the sound it is playing**, without BlackHole or any other virtual audio
 device, without a driver, and without anything running in the background.
 
-Recording the screen with system audio has traditionally meant installing a virtual audio device and routing the Mac's
-output through it. screc does not need that: it uses only Apple's ScreenCaptureKit, which can capture system audio
-directly. screc is an ordinary app (and the same program works from a terminal); nothing else is installed, and
-nothing is left behind when you delete it.
+On macOS 27 and later you may not need screc: the built-in screen recording (⌘⇧5) can include system audio (choose
+**Options → Include System Audio**; see [Apple's guide](https://support.apple.com/102618)). Up to macOS 26, the built-in
+tools record only the microphone, and recording the screen with its sound usually meant installing a virtual audio
+device and routing the Mac's output through it.
+
+screc does not need that: it uses only Apple's ScreenCaptureKit, which can capture system audio directly. It runs on
+macOS 15 and later, and it also works from a terminal, for scripts and timed recordings. screc is an ordinary app;
+nothing else is installed, and nothing is left behind when you delete it.
 
 - Record a whole display, a single window, or a region you draw
 - System audio, and optionally a microphone, in a single audio track
