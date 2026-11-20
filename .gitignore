@@ -1,7 +1,13 @@
+# Build output
 .build/
 .swiftpm/
-/screc
-Recording-*.mp4
-*.mp4
-.DS_Store
 build/
+/screc
+
+# Recordings never belong in the repository
+*.mp4
+*.mov
+
+# Editor and system files
+.vscode/
+.DS_Store

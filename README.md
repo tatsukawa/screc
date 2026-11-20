@@ -26,7 +26,7 @@ picker falls back to a blurred background before macOS 26, but neither has been 
 ## Install the app
 
 ```sh
-git clone <this repository>
+git clone https://github.com/tatsukawa/screc.git
 cd screc
 make dmg
 open build/screc.dmg
