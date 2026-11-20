@@ -61,7 +61,7 @@ final class RecordingIndicator {
         clock.textColor = .white
         stopButton.toolTip = "Stop recording and save"
         stopButton.target = self
-        stopButton.action = #selector(requestStop)
+        stopButton.action = #selector(stopClicked)
 
         let row = NSStackView(views: [dot, label, clock, divider, stopButton])
         row.spacing = 10
@@ -124,7 +124,7 @@ final class RecordingIndicator {
         item.button?.imagePosition = .imageLeading
         item.button?.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         item.button?.target = self
-        item.button?.action = #selector(requestStop)
+        item.button?.action = #selector(stopClicked)
         item.button?.toolTip = "Click to stop recording and save"
         statusItem = item
 
@@ -143,15 +143,15 @@ final class RecordingIndicator {
         statusItem?.button?.title = " Stop " + elapsed
     }
 
-    /// Stops the recording, as the Stop button does. Does nothing unless it is recording.
-    @objc func requestStop() {
-        guard phase == .recording else { return }
-        requestStopForQuit()
-    }
+    /// The Stop button, the menu bar item and the Dock menu. They only exist while recording.
+    @objc private func stopClicked() { requestStop() }
 
-    /// Quit can arrive while ScreenCaptureKit is still starting. Queue a stop before it can write a file.
-    func requestStopForQuit() {
-        guard phase == .starting || phase == .recording else { return }
+    /// Stops the recording and saves it.
+    ///
+    /// - Parameter duringStartup: Also stop while ScreenCaptureKit is still starting, before anything has been
+    ///   recorded. Quitting does this, so that the stop is queued before the recording can write a file.
+    func requestStop(duringStartup: Bool = false) {
+        guard phase == .recording || (duringStartup && phase == .starting) else { return }
         stopping()
         stop()
     }

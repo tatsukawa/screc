@@ -20,6 +20,8 @@ final class Picker {
     private(set) var settings: Preferences
     private let microphones: [PickMicrophone]
     private var keyMonitor: Any?
+    /// Whether the overlays are on the screen.
+    private(set) var isShown = false
     /// Where choices made in the Options menu are remembered for next time; `nil` to remember nothing (tests).
     private let store: UserDefaults?
     /// Whether the picker is still choosing, rather than closed by a choice.
@@ -64,7 +66,7 @@ final class Picker {
             setting = .saveFolder
         case .otherFolder:
             // The overlays would hide the folder dialog, so they step aside while it is open.
-            let wasShown = keyMonitor != nil
+            let wasShown = isShown
             if wasShown { hide() }
             let folder = chooseFolder(settings.saveFolder.url)
             if wasShown { show() }
@@ -137,6 +139,7 @@ final class Picker {
     }
 
     func show() {
+        isShown = true
         NSApp.activate(ignoringOtherApps: true)
         for view in overlays { view.window?.orderFrontRegardless() }
         toolbar.window?.makeKey()
@@ -159,6 +162,7 @@ final class Picker {
     /// Takes the overlays off the screen and stops listening for keys: for the folder dialog, an error dialog, or
     /// when a choice has been made.
     func hide() {
+        isShown = false
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         for view in overlays { view.window?.orderOut(nil) }

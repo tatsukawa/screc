@@ -118,6 +118,12 @@ Each of these was a real bug or trap. Keep the fix, and keep the test where ther
 - **A picker that was gone was still read.** Overlay views and toolbar callbacks held the picker `unowned`; once a
   new picker was made for every recording, a window could draw after its picker was freed, and crashed. They hold it
   `weak` now, and do nothing once it is gone.
+- **Found in a review by Codex** (each has a test): `--window 4294967296` overflowed the window ID and fell back to a
+  title search; a second Ctrl+C racing the final rename could report "discarded" for a saved file (`StopSignals.finish`);
+  ⌘Q while capture was starting quit without saving (`requestStop(duringStartup:)`); stopping early left the
+  `--duration` timer alive for up to a week; choosing one Options entry rewrote every stored setting
+  (`Preferences.save(_:to:)` writes one key); the size shown per hour was called an upper bound, but a target bitrate
+  is not a cap, so it is an estimate.
 - **The app vanished after one recording.** A regular app stays open: `GUISession` goes back to idle after a
   recording or a cancelled picker, and quits only when screc was run from a terminal.
 
