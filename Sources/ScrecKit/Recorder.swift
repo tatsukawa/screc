@@ -55,9 +55,14 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         options: options)
     let configuration = makeConfiguration(options, plan: plan, sourceRect: target.sourceRect)
 
+    let destination = destinationURL(for: options)
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: destination.deletingLastPathComponent().path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        fail("the folder \(destination.deletingLastPathComponent().path) does not exist")
+    }
     let output: OutputFile
     do {
-        output = try OutputFile(destination: destinationURL(for: options))
+        output = try OutputFile(destination: destination)
     } catch {
         fail("\(error)")
     }
@@ -188,13 +193,15 @@ private func windowTarget(_ window: SCWindow) -> CaptureTarget {
     CaptureTarget(filter: SCContentFilter(desktopIndependentWindow: window), sourceRect: nil, description: "window \"\(printable(label(window)))\"")
 }
 
-/// The file to save to: the one given on the command line, or `Recording-<date>.mp4` in the current directory.
-private func destinationURL(for options: Options) -> URL {
-    options.output ?? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return URL(fileURLWithPath: "Recording-\(formatter.string(from: Date())).mp4").absoluteURL
-    }()
+/// The file to save to: the one given on the command line, or `Recording-<date>.mp4` in the output directory (the
+/// current directory unless one was given).
+func destinationURL(for options: Options, now: Date = Date()) -> URL {
+    if let output = options.output { return output }
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyyMMdd-HHmmss"
+    let name = "Recording-\(formatter.string(from: now)).mp4"
+    if let directory = options.outputDirectory { return directory.appendingPathComponent(name) }
+    return URL(fileURLWithPath: name).absoluteURL
 }
 
 private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: CGRect?) -> SCStreamConfiguration {
@@ -203,7 +210,7 @@ private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: 
     configuration.height = plan.height
     if let sourceRect { configuration.sourceRect = sourceRect }
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(options.fps))
-    configuration.showsCursor = true
+    configuration.showsCursor = options.showsCursor
     configuration.capturesAudio = true  // This one switch records the system audio; no virtual audio device is needed.
     configuration.sampleRate = 48_000
     configuration.channelCount = 2

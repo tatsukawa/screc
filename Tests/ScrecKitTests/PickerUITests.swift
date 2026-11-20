@@ -12,7 +12,7 @@ final class PickerUITests: XCTestCase {
         PickMicrophone(id: "buds", name: "Bluetooth Headset", bluetooth: true),
     ]
 
-    func makePicker(options: Options = Options()) -> Picker {
+    func makePicker(options: Options = Options(), store: UserDefaults? = nil) -> Picker {
         prepareAppKit()
         let frame = CGRect(origin: .zero, size: size)
         let picker = Picker(
@@ -20,7 +20,8 @@ final class PickerUITests: XCTestCase {
             displays: [PickDisplay(index: 0, id: 101, frame: frame, screenFrame: frame, scale: 2)],
             windows: [PickWindow(id: 11, frame: CGRect(x: 200, y: 150, width: 700, height: 450))],
             microphones: microphones,
-            pointer: CGPoint(x: 400, y: 300))
+            pointer: CGPoint(x: 400, y: 300),
+            store: store)
         picker.makeOverlays()
         picker.overlays[0].layoutSubtreeIfNeeded()
         return picker
@@ -100,9 +101,7 @@ final class PickerUITests: XCTestCase {
     }
 
     func testARegionGivenWithGUIIsSelectedAtStart() throws {
-        var options = try Options.parse(["--gui", "--region", "100,50,640,360"])
-        options.quality = .high
-        let picker = makePicker(options: options)
+        let picker = makePicker(options: try Options.parse(["--gui", "--quality", "high", "--region", "100,50,640,360"]))
         let log = picks(from: picker)
         XCTAssertEqual(picker.model.mode, .region)
         XCTAssertTrue(try button(titled: "Record", in: picker).isEnabled)
@@ -112,38 +111,131 @@ final class PickerUITests: XCTestCase {
         XCTAssertEqual(log.options.first?.quality, .high)
     }
 
-    func testOptionsMenuStartsWithTheCommandLineChoices() throws {
-        var options = Options()
-        options.mic = true
-        options.micDevice = "builtin"
-        options.quality = .low
-        let picker = makePicker(options: options)
-        XCTAssertEqual(try menuItem("MacBook Pro Microphone", in: picker).state, .on)
-        XCTAssertEqual(try menuItem("None", in: picker).state, .off)
-        XCTAssertEqual(try menuItem(Quality.low.title, in: picker).state, .on)
-        XCTAssertEqual(try menuItem(Quality.medium.title, in: picker).state, .off)
+    func testTheOptionsMenuHoldsEverySetting() throws {
+        let picker = makePicker()
+        let titles = try XCTUnwrap(picker.toolbar.optionsMenu).items.filter { !$0.isSeparatorItem }.map(\.title)
+        for title in [
+            "Save to", "Movies", "Desktop", "Documents", "Other Location…", "Microphone", "None", "Quality", "Format", "H.264",
+            "HEVC", "Frame Rate", "60 fps", "30 fps", "Show Mouse Pointer", "After Saving", "Show in Finder", "Open", "Do Nothing",
+        ] {
+            XCTAssertTrue(titles.contains(title), "missing \(title)")
+        }
+        XCTAssertFalse(titles.contains("Settings…"), "there is no separate Settings window")
     }
 
-    func testChoosingAMicrophoneAndQualityInTheMenu() throws {
+    func testTheMenuStartsWithTheDefaults() throws {
+        let picker = makePicker()
+        for checked in ["Movies", "None", Quality.medium.title, "H.264", "60 fps", "Show Mouse Pointer", "Show in Finder"] {
+            XCTAssertEqual(try menuItem(checked, in: picker).state, .on, checked)
+        }
+        for unchecked in ["Desktop", Quality.high.title, "HEVC", "30 fps", "Open"] {
+            XCTAssertEqual(try menuItem(unchecked, in: picker).state, .off, unchecked)
+        }
+    }
+
+    func testEveryMenuChoiceReachesTheRecording() throws {
         let picker = makePicker()
         let log = picks(from: picker)
+        for title in ["Desktop", "MacBook Pro Microphone", Quality.low.title, "HEVC", "30 fps", "Show Mouse Pointer"] {
+            try choose(title, in: picker)
+        }
+        XCTAssertEqual(try menuItem("Show Mouse Pointer", in: picker).state, .off, "it toggles")
+        picker.start()
+        let picked = try XCTUnwrap(log.options.first)
+        XCTAssertEqual(picked.outputDirectory, Preferences.SaveFolder.desktop.url)
+        XCTAssertEqual(picked.micDevice, "builtin")
+        XCTAssertTrue(picked.mic)
+        XCTAssertEqual(picked.quality, .low)
+        XCTAssertTrue(picked.hevc)
+        XCTAssertEqual(picked.fps, 30)
+        XCTAssertFalse(picked.showsCursor)
+    }
+
+    func testOtherLocationAsksForAFolderAndListsIt() throws {
+        let picker = makePicker()
+        let log = picks(from: picker)
+        let folder = URL(fileURLWithPath: "/tmp/screc recordings", isDirectory: true)
+        picker.chooseFolder = { _ in folder }
+        try choose("Other Location…", in: picker)
+        XCTAssertEqual(try menuItem("screc recordings", in: picker).state, .on)
+        XCTAssertEqual(try menuItem("Movies", in: picker).state, .off)
+        XCTAssertTrue(summary(of: picker).contains("Saves to screc recordings"))
+        picker.start()
+        XCTAssertEqual(log.options.first?.outputDirectory, folder)
+    }
+
+    func testCancellingTheFolderDialogChangesNothing() throws {
+        let picker = makePicker()
+        picker.chooseFolder = { _ in nil }
+        try choose("Other Location…", in: picker)
+        XCTAssertEqual(try menuItem("Movies", in: picker).state, .on)
+    }
+
+    func testChoicesAreRememberedForNextTime() throws {
+        let defaults = TemporaryDefaults()
+        let picker = makePicker(store: defaults.store)
+        for title in ["Documents", "MacBook Pro Microphone", Quality.low.title, "HEVC", "30 fps", "Show Mouse Pointer", "Do Nothing"] {
+            try choose(title, in: picker)
+        }
+        var expected = Preferences()
+        expected.saveFolder = .documents
+        expected.microphoneID = "builtin"
+        expected.quality = .low
+        expected.hevc = true
+        expected.fps = 30
+        expected.showsCursor = false
+        expected.afterSaving = .nothing
+        XCTAssertEqual(Preferences.load(from: defaults.store), expected)
+
+        let next = makePicker(store: defaults.store)  // the next time screc opens
+        XCTAssertEqual(next.settings, expected)
+        XCTAssertEqual(try menuItem("Documents", in: next).state, .on)
+    }
+
+    func testCommandLineOptionsAreShownButNotRemembered() throws {
+        let defaults = TemporaryDefaults()
+        let options = try Options.parse(["--gui", "--quality", "high", "--hevc", "--no-cursor"])
+        let picker = makePicker(options: options, store: defaults.store)
+        XCTAssertEqual(try menuItem(Quality.high.title, in: picker).state, .on)
+        XCTAssertEqual(try menuItem("HEVC", in: picker).state, .on)
+        XCTAssertEqual(try menuItem("Show Mouse Pointer", in: picker).state, .off)
+
+        try choose("Desktop", in: picker)
+        let stored = Preferences.load(from: defaults.store)
+        XCTAssertEqual(stored.saveFolder, .desktop, "what was chosen is remembered")
+        XCTAssertEqual(stored.quality, .medium, "what the command line said is not")
+        XCTAssertFalse(stored.hevc)
+        XCTAssertTrue(stored.showsCursor)
+    }
+
+    func testARememberedMicrophoneThatIsNotConnectedMeansNone() throws {
+        let defaults = TemporaryDefaults()
+        var stored = Preferences()
+        stored.microphoneID = "usb-unplugged"
+        stored.save(to: defaults.store)
+        let picker = makePicker(store: defaults.store)
+        let log = picks(from: picker)
         XCTAssertEqual(try menuItem("None", in: picker).state, .on)
-        XCTAssertEqual(try menuItem(Quality.medium.title, in: picker).state, .on)
-
-        try choose("MacBook Pro Microphone", in: picker)
-        XCTAssertEqual(try menuItem("MacBook Pro Microphone", in: picker).state, .on)
-        XCTAssertEqual(try menuItem("None", in: picker).state, .off)
-        XCTAssertTrue(summary(of: picker).contains("MacBook"))
         picker.start()
-        XCTAssertEqual(log.options.last?.mic, true)
-        XCTAssertEqual(log.options.last?.micDevice, "builtin")
+        XCTAssertEqual(log.options.first?.mic, false)
+    }
 
-        try choose(Quality.high.title, in: picker)
-        try choose("None", in: picker)
+    func testAnOutputFileFromTheCommandLineIsKept() throws {
+        let picker = makePicker(options: try Options.parse(["--gui", "/tmp/clip.mp4"]))
+        let log = picks(from: picker)
+        XCTAssertFalse(summary(of: picker).contains("Saves to"))
         picker.start()
-        XCTAssertEqual(log.options.last?.mic, false)
-        XCTAssertNil(log.options.last?.micDevice)
-        XCTAssertEqual(log.options.last?.quality, .high)
+        XCTAssertEqual(log.options.first?.output?.path, "/tmp/clip.mp4")
+        XCTAssertNil(log.options.first?.outputDirectory)
+    }
+
+    func testAPickerOnlyHandsOnOneChoice() throws {
+        let picker = makePicker()
+        let log = picks(from: picker)
+        picker.start()
+        picker.start()
+        XCTAssertEqual(log.options.count, 1)
+        XCTAssertFalse(picker.isChoosing)
     }
 
     func testTheSummaryWarnsAboutABluetoothMicrophone() throws {

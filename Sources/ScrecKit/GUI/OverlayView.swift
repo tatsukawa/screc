@@ -13,7 +13,9 @@ final class OverlayView: NSView {
         case toolbar(last: CGPoint)
     }
 
-    unowned let picker: Picker
+    /// Weak: a window can outlive the picker for a moment (it may still draw after the picker is gone), and the picker
+    /// owns the overlays anyway. Every entry point does nothing once the picker has gone.
+    private weak var picker: Picker?
     let display: PickDisplay
     private var drag: Drag?
 
@@ -33,6 +35,7 @@ final class OverlayView: NSView {
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        guard let picker else { return }
         NSColor.black.withAlphaComponent(0.3).setFill()
         bounds.fill()
         if let hole = picker.model.highlight(on: display) {
@@ -44,6 +47,7 @@ final class OverlayView: NSView {
     }
 
     private func drawHighlightFrame(around hole: CGRect) {
+        guard let picker else { return }
         let accent = NSColor.controlAccentColor
         func stroke(_ rect: CGRect, _ color: NSColor, width: CGFloat) {
             color.setStroke()
@@ -94,6 +98,7 @@ final class OverlayView: NSView {
     }
 
     private func cursor(at point: CGPoint) -> NSCursor {
+        guard let picker else { return .arrow }
         guard picker.model.mode == .region, !isOnToolbar(point) else { return .arrow }
         guard let region = picker.model.region, region.display == display.index,
             let grip = PickerModel.grip(at: point, in: region.rect)
@@ -109,10 +114,12 @@ final class OverlayView: NSView {
     private func location(of event: NSEvent) -> CGPoint { convert(event.locationInWindow, from: nil) }
 
     private func isOnToolbar(_ point: CGPoint) -> Bool {
-        picker.toolbar.superview === self && picker.toolbar.frame.contains(point)
+        guard let picker else { return false }
+        return picker.toolbar.superview === self && picker.toolbar.frame.contains(point)
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard let picker else { return }
         let point = location(of: event)
         picker.model.movePointer(to: point, on: display)
         cursor(at: point).set()
@@ -120,6 +127,7 @@ final class OverlayView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard let picker else { return }
         let point = location(of: event)
         if isOnToolbar(point) {  // The padding around the controls drags the toolbar.
             drag = .toolbar(last: point)
@@ -136,6 +144,7 @@ final class OverlayView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard let picker else { return }
         let point = location(of: event)
         switch drag {
         case .toolbar(let last):
@@ -150,7 +159,7 @@ final class OverlayView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let finished = drag else { return }
+        guard let picker, let finished = drag else { return }
         drag = nil
         if case .region = finished {
             picker.model.endDrag()

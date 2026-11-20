@@ -5,11 +5,20 @@ func shareableContent() async -> SCShareableContent {
     do {
         return try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
     } catch {
+        let pane = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        // The permission belongs to the app when it was opened as one, and to the terminal whenever screc runs from a
+        // terminal, even the binary inside the app.
+        if openedAsApp {
+            fail("""
+                screen recording is not permitted (\(error.localizedDescription)).
+                Allow screc in System Settings > Privacy & Security > "Screen & System Audio Recording", then open screc again.
+                """, systemSettings: pane)
+        }
         fail("""
             screen recording is not permitted (\(error.localizedDescription)).
             Allow the terminal app that runs screc in System Settings > Privacy & Security >
             "Screen & System Audio Recording", then restart the terminal.
-            """)
+            """, systemSettings: pane)
     }
 }
 

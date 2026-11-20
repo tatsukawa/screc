@@ -36,6 +36,18 @@ final class OptionsTests: XCTestCase {
         XCTAssertEqual(options.output?.lastPathComponent, "out.mp4")
     }
 
+    func testOutputDirectoryAndCursor() throws {
+        let options = try Options.parse(["--output-dir", "~/Movies", "--no-cursor"])
+        XCTAssertEqual(options.outputDirectory?.path, NSString(string: "~/Movies").expandingTildeInPath)
+        XCTAssertFalse(options.showsCursor)
+        XCTAssertTrue(try Options.parse([]).showsCursor)
+    }
+
+    func testTheGivenOptionsAreRecorded() throws {
+        XCTAssertEqual(try Options.parse(["--fps", "30", "--hevc", "out.mp4"]).given, ["--fps", "--hevc"])
+        XCTAssertEqual(try Options.parse([]).given, [])
+    }
+
     func testMicDeviceImpliesMic() throws {
         let options = try Options.parse(["--mic-device", "headset"])
         XCTAssertTrue(options.mic)
@@ -90,6 +102,8 @@ final class OptionsTests: XCTestCase {
             ["--gui", "--window", "Safari"],  // the picker cannot start from a window
             ["--gui", "--display", "1"],  // nor from a whole display
             ["--gui", "--list"],
+            ["--output-dir"],
+            ["--output-dir", "/tmp", "clip.mp4"],  // both a folder and a file
         ]
         for arguments in invalid {
             XCTAssertThrowsError(try Options.parse(arguments), "\(arguments)") { error in

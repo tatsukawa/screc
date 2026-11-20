@@ -1,18 +1,31 @@
 import AppKit
 
+/// One choice in the toolbar's Options menu.
+enum PickerChoice: Equatable {
+    case saveFolder(Preferences.SaveFolder)
+    /// "Other Location…": ask for a folder.
+    case otherFolder
+    /// A microphone's ID, or `nil` for none.
+    case microphone(String?)
+    case quality(Quality)
+    case hevc(Bool)
+    case fps(Int)
+    case showsCursor(Bool)
+    case afterSaving(Preferences.AfterSaving)
+}
+
 /// The floating toolbar of the picker, laid out like the one in ⌘⇧5:
 /// a glass capsule holding "close | what to record | options, record", with a one-line summary underneath.
 ///
-/// It knows nothing about the picker's state. It reports what the user does through its `on…` closures and is told
-/// what to show through `update(…)`.
+/// Every setting lives in the Options menu, as in ⌘⇧5, rather than in a separate window. The toolbar knows nothing
+/// about the picker's state: it reports what the user does through its `on…` closures and is told what to show
+/// through `update(…)`.
 @MainActor
 final class PickerToolbar: NSView {
     var onCancel: () -> Void = {}
     var onStart: () -> Void = {}
     var onModeChange: (PickMode) -> Void = { _ in }
-    /// `nil` means "no microphone".
-    var onMicrophoneChange: (PickMicrophone?) -> Void = { _ in }
-    var onQualityChange: (Quality) -> Void = { _ in }
+    var onChoice: (PickerChoice) -> Void = { _ in }
 
     private let microphones: [PickMicrophone]
     private let modeControl = NSSegmentedControl(labels: ["", "", ""], trackingMode: .selectOne, target: nil, action: nil)
@@ -29,6 +42,9 @@ final class PickerToolbar: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// The Options menu as it is now; rebuilt on every `update`.
+    var optionsMenu: NSMenu? { optionsButton.menu }
 
     // MARK: Building
 
@@ -50,7 +66,6 @@ final class PickerToolbar: NSView {
         modeControl.target = self
         modeControl.action = #selector(modeClicked)
 
-        optionsButton.menu = makeOptionsMenu()
         optionsButton.isBordered = false
         (optionsButton.cell as? NSPopUpButtonCell)?.altersStateOfSelectedItem = false  // The check marks are set by hand.
 
@@ -99,42 +114,70 @@ final class PickerToolbar: NSView {
         ])
     }
 
-    /// The "Options" pull-down: microphone and quality. A selected entry is told apart by its tag.
-    private func makeOptionsMenu() -> NSMenu {
+    /// The Options menu, in sections like the one in ⌘⇧5. Each item carries the choice it stands for.
+    private func makeOptionsMenu(_ settings: Preferences) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.addItem(withTitle: "Options", action: nil, keyEquivalent: "")  // The title the pull-down button shows.
-        func add(_ title: String, _ action: Selector, tag: Int, subtitle: String? = nil) {
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+
+        func section(_ title: String) {
+            if menu.items.count > 1 { menu.addItem(.separator()) }
+            menu.addItem(.sectionHeader(title: title))
+        }
+        func add(_ title: String, _ choice: PickerChoice, checked: Bool, subtitle: String? = nil) {
+            let item = NSMenuItem(title: title, action: #selector(choiceMade(_:)), keyEquivalent: "")
             item.target = self
-            item.tag = tag
+            item.representedObject = ChoiceBox(choice)
+            item.state = checked ? .on : .off
             item.subtitle = subtitle
             menu.addItem(item)
         }
-        menu.addItem(.sectionHeader(title: "Microphone"))
-        add("None", #selector(microphoneChosen), tag: -1)
-        for (index, microphone) in microphones.enumerated() {
-            add(microphone.name, #selector(microphoneChosen), tag: index, subtitle: microphone.bluetooth ? "What you hear drops to call quality while recording" : nil)
+
+        section("Save to")
+        let standardFolders: [(String, Preferences.SaveFolder)] = [("Movies", .movies), ("Desktop", .desktop), ("Documents", .documents)]
+        for (title, folder) in standardFolders { add(title, .saveFolder(folder), checked: settings.saveFolder == folder) }
+        if case .custom(let url) = settings.saveFolder {
+            add(FileManager.default.displayName(atPath: url.path), .saveFolder(settings.saveFolder), checked: true,
+                subtitle: (url.path as NSString).abbreviatingWithTildeInPath)
         }
-        menu.addItem(.separator())
-        menu.addItem(.sectionHeader(title: "Quality"))
-        for (index, quality) in Quality.allCases.enumerated() { add(quality.title, #selector(qualityChosen), tag: index) }
+        add("Other Location…", .otherFolder, checked: false)
+
+        section("Microphone")
+        add("None", .microphone(nil), checked: settings.microphoneID == nil)
+        for microphone in microphones {
+            add(microphone.name, .microphone(microphone.id), checked: settings.microphoneID == microphone.id,
+                subtitle: microphone.bluetooth ? "What you hear drops to call quality while recording" : nil)
+        }
+
+        section("Quality")
+        for quality in Quality.allCases { add(quality.title, .quality(quality), checked: settings.quality == quality) }
+
+        section("Format")
+        add("H.264", .hevc(false), checked: !settings.hevc, subtitle: "Plays everywhere")
+        add("HEVC", .hevc(true), checked: settings.hevc, subtitle: "Smaller files")
+
+        section("Frame Rate")
+        add("60 fps", .fps(60), checked: settings.fps == 60)
+        add("30 fps", .fps(30), checked: settings.fps == 30)
+
+        section("Options")
+        add("Show Mouse Pointer", .showsCursor(!settings.showsCursor), checked: settings.showsCursor)
+
+        section("After Saving")
+        add("Show in Finder", .afterSaving(.showInFinder), checked: settings.afterSaving == .showInFinder)
+        add("Open", .afterSaving(.open), checked: settings.afterSaving == .open)
+        add("Do Nothing", .afterSaving(.nothing), checked: settings.afterSaving == .nothing)
         return menu
     }
 
     // MARK: Updating
 
-    /// Shows the summary line, the record button's state and the checkmarks of the options menu.
-    func update(caption text: String, canRecord: Bool, microphone: PickMicrophone?, quality: Quality) {
+    /// Shows the summary line, the record button's state, and the Options menu for `settings`.
+    func update(caption text: String, canRecord: Bool, settings: Preferences) {
         caption.stringValue = text
         recordButton.isEnabled = canRecord
         recordButton.alphaValue = canRecord ? 1 : 0.4
-
-        let microphoneTag = microphones.firstIndex { $0.id == microphone?.id } ?? -1
-        for item in optionsButton.menu?.items ?? [] {
-            if item.action == #selector(microphoneChosen) { item.state = item.tag == microphoneTag ? .on : .off }
-            if item.action == #selector(qualityChosen) { item.state = Quality.allCases[item.tag] == quality ? .on : .off }
-        }
+        optionsButton.menu = makeOptionsMenu(settings)
     }
 
     // MARK: Placement
@@ -164,9 +207,14 @@ final class PickerToolbar: NSView {
     @objc private func startClicked() { onStart() }
     @objc private func modeClicked() { onModeChange(PickMode(rawValue: modeControl.selectedSegment) ?? .display) }
 
-    @objc private func microphoneChosen(_ item: NSMenuItem) {
-        onMicrophoneChange(microphones.indices.contains(item.tag) ? microphones[item.tag] : nil)
+    @objc private func choiceMade(_ item: NSMenuItem) {
+        guard let box = item.representedObject as? ChoiceBox else { return }
+        onChoice(box.choice)
     }
+}
 
-    @objc private func qualityChosen(_ item: NSMenuItem) { onQualityChange(Quality.allCases[item.tag]) }
+/// Lets a `PickerChoice` ride on a menu item, which can only hold an object.
+private final class ChoiceBox: NSObject {
+    let choice: PickerChoice
+    init(_ choice: PickerChoice) { self.choice = choice }
 }

@@ -8,6 +8,8 @@ design; this file covers how to work on it.
 ```sh
 make                                   # release build; ./screc links to .build/release/screc
 make test                              # tests that need no screen; run after every change
+make app                               # build/screc.app (universal, ad hoc signed)
+make dmg                               # build/screc.dmg, the drag-to-Applications installer
 SCREC_UI_TESTS=1 swift test            # also the tests that put windows on the screen
 SCREC_UI_TESTS=1 SCREC_SNAPSHOT_DIR=/tmp/screc-snapshots swift test   # and write pictures of the UI
 ./screc --help
@@ -31,9 +33,10 @@ SCREC_UI_TESTS=1 SCREC_SNAPSHOT_DIR=/tmp/screc-snapshots swift test   # and writ
 
 ```
 Sources/screc/        main.swift: one line
-Sources/ScrecKit/     options, what to record, record(), the GUI (GUI/)
+Sources/ScrecKit/     options, what to record, record(), the GUI (GUI/: Session, Picker, overlays, toolbar, stop panel)
 Sources/ScrecMedia/   MovieWriter and mixAudioTracks: the only AVAssetWriter/Reader code
 Tests/ScrecKitTests/  unit tests, headless UI tests, OnScreenTests (opt-in)
+Packaging/            Info.plist, entitlements, AppIcon.icon, build-app.sh (the app and the DMG)
 docs/                 how it works, troubleshooting
 ```
 
@@ -52,7 +55,18 @@ Keep it that way, so that every recording feature works from both.
   appear only where windows are placed (`PickDisplay.screenFrame`).
 - Picker behaviour belongs in `PickerModel`, with tests. Views translate events into model calls and draw.
 - When you add or change an option, update `usage` in `Options.swift`, the options table in `README.md`, and
-  `OptionsTests`.
+  `OptionsTests`. If the option has a counterpart in the Options menu, `Preferences.overridden(by:)` must take it over
+  when it was given (`Options.given`), and the menu must not store it.
+- Every GUI setting lives in the toolbar's Options menu, as in ⌘⇧5. Do not bring back a separate settings window
+  (see below). Settings are read with `Preferences.load()` and written by `Picker.choose(_:)` only, one setting at a time.
+  Tests use a throwaway defaults domain (`TemporaryDefaults`), never the user's.
+- `Packaging/AppIcon.icon` is an Icon Composer document (`icon.json` plus SVG layers). Let macOS draw the glass:
+  keep the layers flat shapes. Preview it without opening anything with
+  `"/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool" Packaging/AppIcon.icon
+  --export-image --output-file icon.png --platform macOS --rendition Default --width 512 --height 512 --scale 1`
+  (also `--rendition Dark`).
+- Do not open the app (`open build/screc.app`) unasked: it covers the user's screen and may trigger permission
+  prompts. Check the bundle with `codesign`, `plutil` and `lipo` instead, and ask the user to try it.
 - Errors for the user go through `fail()`, start in lower case, and point to `--list` when that helps.
 - Swift 6 toolchain, Swift 5 language mode (see `Package.swift`). The build should stay free of warnings.
 
@@ -86,6 +100,26 @@ Each of these was a real bug or trap. Keep the fix, and keep the test where ther
 - **Validate numbers strictly.** `compactMap` once turned `--region 10,typo,20,300,200` into a different region, and
   `--duration inf` crashed the timer after recording had started.
 - **Text from other programs** (window titles, device names) goes through `printable()` before it is printed.
+- **An app opened from Finder has no terminal.** Errors must also reach the user as a dialog (`fail()` does this in the
+  GUI), or the app just disappears.
+- **A separate Settings window made screc look stuck.** It could end up behind other apps, leaving an app without a
+  Dock icon that seemed to run but could not be opened. All settings went into the Options menu instead.
+- **Users could not tell whether the app was running.** It was an agent app (`LSUIElement`) with no Dock icon or
+  menu bar. Opened as an app, screc is now a regular app while it runs; quitting while recording saves first
+  (`ScrecAppDelegate.applicationShouldTerminate`).
+- **Opening the app again did nothing.** `applicationShouldHandleReopen` now brings back the picker, the stop panel or
+  the open dialog.
+- **Dialogs hid while screc was inactive.** Panels hide on deactivation by default; the error dialog and the folder
+  chooser set `hidesOnDeactivate = false`. An app opened from Finder is not always allowed to become active.
+- **Snapshot tests failed on every first run.** Only one of them created `SCREC_SNAPSHOT_DIR`, and tests run in name
+  order, so another wrote first into a folder that did not exist yet. Each snapshot test now calls
+  `snapshotDirectory()`. (On-screen tests also wait for the window server with `waitUntilOnScreen` rather than a fixed
+  delay; that was a first, wrong guess at this failure, but it does no harm.)
+- **A picker that was gone was still read.** Overlay views and toolbar callbacks held the picker `unowned`; once a
+  new picker was made for every recording, a window could draw after its picker was freed, and crashed. They hold it
+  `weak` now, and do nothing once it is gone.
+- **The app vanished after one recording.** A regular app stays open: `GUISession` goes back to idle after a
+  recording or a cancelled picker, and quits only when screc was run from a terminal.
 
 ## Commits
 

@@ -6,7 +6,8 @@ let usage = """
     Usage: screc                          choose what to record on screen (GUI)
            screc [options] [output.mp4]   record as the options say (command line)
 
-      Without an output file, the recording is saved as ./Recording-<date>.mp4.
+      Without an output file, the recording is saved as Recording-<date>.mp4 in the current directory, or in the
+      directory given with --output-dir. (The GUI uses the save folder from its Settings.)
       Stop with Ctrl+C on the command line, or with the Stop button that appears at the top of the screen in the GUI
       (the menu bar has one too).
 
@@ -19,6 +20,8 @@ let usage = """
                          Uses the default input, but the built-in microphone instead if that is a Bluetooth
                          device (a Bluetooth headset drops to call quality while its microphone is in use)
       --mic-device NAME  record this microphone (part of its name; implies --mic; see --list)
+      --no-cursor        leave the mouse pointer out of the recording
+      --output-dir DIR   save Recording-<date>.mp4 in DIR instead of the current directory
       --list             list the displays, windows and microphones, then exit
 
     Compression (the size of one hour of recording is estimated when a recording starts)
@@ -60,6 +63,9 @@ enum Quality: String, CaseIterable {
 /// Everything that decides what is recorded and how. Both the command line and the GUI produce one of these.
 struct Options: Equatable {
     var output: URL?
+    /// Where to save `Recording-<date>.mp4` when no output file is given; `nil` for the current directory.
+    var outputDirectory: URL?
+    var showsCursor = true
     var mic = false
     /// Part of a microphone's name, or its ID. `nil` picks one automatically.
     var micDevice: String?
@@ -85,6 +91,8 @@ struct Options: Equatable {
     var duration: Double?
     var list = false
     var gui = false
+    /// The options that were given on the command line. Stored preferences fill in only what is not in here.
+    var given: Set<String> = []
 }
 
 extension Options {
@@ -101,6 +109,7 @@ extension Options {
         }
 
         while let arg = args.popFirst() {
+            if arg.hasPrefix("-") { options.given.insert(arg) }
             switch arg {
             case "-h", "--help":
                 throw UsageError.help
@@ -111,6 +120,10 @@ extension Options {
                 options.mic = true
             case "--hevc":
                 options.hevc = true
+            case "--no-cursor":
+                options.showsCursor = false
+            case "--output-dir":
+                options.outputDirectory = URL(fileURLWithPath: (try value(for: arg) as NSString).expandingTildeInPath, isDirectory: true)
             case "--list":
                 options.list = true
             case "--gui":
@@ -165,6 +178,7 @@ extension Options {
             }
         }
         if options.window != nil && options.region != nil { throw UsageError.invalid("--window and --region cannot be combined") }
+        if options.output != nil && options.outputDirectory != nil { throw UsageError.invalid("give either an output file or --output-dir, not both") }
         if options.gui {
             // The picker can start from a region, but has no way to start from a window or a whole display, and silently
             // ignoring those would record something else than was asked for.

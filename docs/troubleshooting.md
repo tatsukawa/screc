@@ -2,9 +2,30 @@
 
 ## "screen recording is not permitted"
 
-macOS has not allowed the terminal app to record the screen. Open **System Settings → Privacy & Security →
-Screen & System Audio Recording**, turn on the terminal app you run screc from (Terminal, iTerm2, …), then quit and
-reopen that app. A terminal that was already open when you allowed it keeps failing until it is restarted.
+macOS has not allowed screc to record the screen. Open **System Settings → Privacy & Security →
+Screen & System Audio Recording** (the app's error dialog has a button for it) and turn on:
+
+- **screc**, if you opened the screc app;
+- the terminal app (Terminal, iTerm2, …), if you ran screc from a terminal. A terminal that was already open when you
+  allowed it keeps failing until it is restarted.
+
+Then open screc again. After rebuilding the app, the permission may have to be given again: an ad hoc signature changes
+with every build, and macOS treats the new build as a different app.
+
+## "screc can't be opened" or "Apple could not verify screc"
+
+The app was built on another Mac and is not signed with an Apple Developer ID. Build it yourself (`make dmg`), or, if
+you trust where it came from, allow it under **System Settings → Privacy & Security** with **Open Anyway**.
+
+## macOS asks for access to the Desktop or Documents folder
+
+Saving there needs that permission. Allow it, or choose another folder under **Options → Save to**. Movies, the
+default, needs no permission.
+
+## "the folder … does not exist"
+
+The folder chosen under **Options → Save to**, or given with `--output-dir`, was moved or deleted. Choose another
+one.
 
 ## What I hear gets worse while recording
 
@@ -37,9 +58,15 @@ show something private. It lists the matching windows with their IDs; give the I
 Between choosing in the picker and the start of the recording, the window was closed or minimised, or the display was
 disconnected. Start screc again and choose again.
 
+## screc seems to be running, but nothing shows
+
+Click its icon in the Dock, or open it again: it brings back whatever it is showing (the picker, the stop panel or a
+dialog). To quit it, use **Quit** in the Dock icon's menu or ⌘Q; a recording in progress is saved first.
+
 ## The picker does not respond
 
-Press Ctrl+C in the terminal you started screc from. That ends screc and removes the dimmed overlay.
+If you started screc from a terminal, press Ctrl+C there. That ends screc and removes the dimmed overlay. If you
+opened the app, force-quit it (⌥⌘Esc, or `killall screc` in a terminal).
 
 ## "--region lies outside the display or is too small"
 

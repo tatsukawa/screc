@@ -1,18 +1,25 @@
 import AppKit
 import ScreenCaptureKit
 
-/// Runs the GUI: lets the user choose what to record, records it, and then reveals the file in Finder. Does not return.
+/// Runs the GUI: lets the user choose what to record, records it, and does what the settings say with the file (by
+/// default, shows it in Finder). Opened as an app, screc then waits for the next recording; run from a terminal, it
+/// quits. Does not return.
 @MainActor
 func runGUI(_ options: Options) -> Never {
     let app = NSApplication.shared
-    app.setActivationPolicy(.accessory)  // No Dock icon.
-    Task { @MainActor in
-        let picker = await makePicker(options)
-        picker.onPick = { picked in Task { @MainActor in await recordAndReveal(picked) } }
-        Picker.current = picker
-        picker.makeOverlays()
-        picker.show()
+    // Opened as an app, screc behaves like one: a Dock icon and a menu bar while it runs, so it can be found, brought
+    // back and quit. Run from a terminal, the terminal shows what is going on, and no Dock icon is needed.
+    if openedAsApp {
+        app.setActivationPolicy(.regular)
+        app.mainMenu = makeMainMenu()
+    } else {
+        app.setActivationPolicy(.accessory)
     }
+    app.delegate = ScrecAppDelegate.shared
+    showsFailuresInDialog = true  // The app may have been opened from Finder, with no terminal to print to.
+    let session = GUISession(options: options, staysOpen: openedAsApp, makePicker: makePicker, recordPicked: recordAndReveal)
+    GUISession.shared = session
+    session.newRecording()
     app.run()
     exit(0)
 }
@@ -34,11 +41,84 @@ private func makePicker(_ options: Options) async -> Picker {
 
     let microphones = microphones().map { PickMicrophone(id: $0.uniqueID, name: $0.localizedName, bluetooth: isBluetooth($0)) }
     var options = options
-    if options.mic { options.micDevice = chooseMicrophone(options.micDevice)?.uniqueID }  // The menu's initial choice.
-    return Picker(options: options, displays: displays, windows: windows, microphones: microphones, pointer: pointer)
+    if !options.given.isDisjoint(with: ["--mic", "--mic-device"]) {
+        // Asked for on the command line: resolve it as the command line would, failing if it does not exist.
+        options.micDevice = chooseMicrophone(options.micDevice)?.uniqueID
+    }
+    return Picker(
+        options: options, displays: displays, windows: windows, microphones: microphones, pointer: pointer, store: Preferences.store)
 }
 
-/// Records what was picked while showing the stop panel, then reveals the file in Finder and exits.
+/// The menu bar of the app: the application menu, and File with New Recording.
+@MainActor
+private func makeMainMenu() -> NSMenu {
+    let appMenu = NSMenu(title: "screc")
+    appMenu.addItem(withTitle: "About screc", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+    appMenu.addItem(.separator())
+    appMenu.addItem(withTitle: "Quit screc", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    let fileMenu = NSMenu(title: "File")
+    let newRecording = fileMenu.addItem(
+        withTitle: "New Recording", action: #selector(ScrecAppDelegate.newRecording(_:)), keyEquivalent: "n")
+    newRecording.target = ScrecAppDelegate.shared
+    let menu = NSMenu()
+    for submenu in [appMenu, fileMenu] {
+        let item = NSMenuItem()
+        item.submenu = submenu
+        menu.addItem(item)
+    }
+    return menu
+}
+
+/// What the app does when the user reaches it from outside the picker: opening it again, its Dock menu, quitting.
+@MainActor
+final class ScrecAppDelegate: NSObject, NSApplicationDelegate {
+    static let shared = ScrecAppDelegate()  // NSApplication holds its delegate weakly.
+
+    /// Opening screc again while it runs (clicking its Dock icon, say) brings back what it is showing, or starts the next
+    /// recording when it is waiting. Without this, nothing visible happened, and screc looked stuck in the background.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        if let dialog = NSApp.modalWindow {
+            dialog.orderFrontRegardless()
+        } else {
+            GUISession.shared?.newRecording()
+        }
+        return false
+    }
+
+    /// The Dock icon's menu: Stop Recording while recording, New Recording while waiting.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        if RecordingIndicator.current?.phase == .recording {
+            menu.addItem(withTitle: "Stop Recording", action: #selector(stopRecording), keyEquivalent: "").target = self
+        } else if GUISession.shared?.state == .idle {
+            menu.addItem(withTitle: "New Recording", action: #selector(newRecording(_:)), keyEquivalent: "").target = self
+        } else {
+            return nil
+        }
+        return menu
+    }
+
+    @objc func newRecording(_ sender: Any?) { GUISession.shared?.newRecording() }
+
+    @objc private func stopRecording() { RecordingIndicator.current?.requestStop() }
+
+    /// Quitting while recording saves the recording instead of throwing it away. The quit is cancelled; the user quits
+    /// again once it is saved.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        switch RecordingIndicator.current?.phase {
+        case .recording:
+            RecordingIndicator.current?.requestStop()
+            return .terminateCancel
+        case .saving:
+            return .terminateCancel
+        default:
+            return .terminateNow
+        }
+    }
+}
+
+/// Records what was picked while showing the stop panel, then does what the settings say with the file.
 @MainActor
 private func recordAndReveal(_ options: Options) async {
     let control = Control()
@@ -53,9 +133,13 @@ private func recordAndReveal(_ options: Options) async {
     let output = await record(options, control: control)
     indicator.saved()
 
-    // Showing the file in Finder is a convenience: do not wait for it. `open -R` rather than NSWorkspace, which logs a
-    // pasteboard warning to the terminal.
-    _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-R", output.path])
-    try? await Task.sleep(for: .milliseconds(1500))  // Show "Saved" for a moment before quitting.
-    exit(0)
+    // A convenience, so it is not waited for. `open` rather than NSWorkspace, which logs a pasteboard warning to the
+    // terminal.
+    switch Preferences.load().afterSaving {
+    case .showInFinder: _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-R", output.path])
+    case .open: _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: [output.path])
+    case .nothing: break
+    }
+    try? await Task.sleep(for: .milliseconds(1500))  // Show "Saved" for a moment.
+    indicator.dismiss()
 }

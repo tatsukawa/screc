@@ -137,12 +137,55 @@ The panel is left out of the recording together with every other window of screc
 application from the capture. ScreenCaptureKit only lists applications that have a window on screen, so the panel is
 shown before the recording starts. Should screc not be listed, the panel is excluded by its window ID instead.
 
+## Settings
+
+Every setting is in the toolbar's Options menu, as in ⌘⇧5; a separate settings window was tried and dropped, because
+it left screc with a window that could get lost behind other apps. `Preferences.swift` holds the settings. They are
+stored in the `screc` defaults domain, which the app and the binary run from a terminal share. The domain is
+deliberately not the app's bundle identifier: a process may not use its own bundle identifier as a suite name, and the
+bare binary has none.
+
+The picker starts from the stored settings, overridden by whatever the command line gave (`Options.given` records
+which options were given). A choice in the menu changes the picker's settings and stores only that one setting, so an
+option given for one run is never saved by accident. A recording started on the command line does not read the stored
+settings at all.
+
+## The app
+
+`Packaging/build-app.sh` (`make app`, `make dmg`) wraps the same release binary in `screc.app`, a regular app: it
+shows the picker when opened and stays open between recordings. `GUISession` moves between choosing, recording and
+waiting; from a terminal it quits after one recording instead. Running as an app changes a few things in the program
+(`openedAsApp`):
+
+- While it runs it has a Dock icon and a menu bar, so it can be found, brought back and quit. A first version hid both,
+  like the toolbar of ⌘⇧5, and users could not tell whether screc was running at all. Run from a terminal, it still
+  has neither: the terminal shows what is going on.
+- File → New Recording (⌘N), the Dock icon, and the Dock icon's menu start the next recording. That menu offers Stop
+  Recording while recording, and quitting (⌘Q) while recording stops and saves first.
+
+- Errors are also shown in a dialog, since an app opened from Finder has no terminal (`showsFailuresInDialog`). A
+  missing screen recording permission offers to open the right pane of System Settings.
+- The permission message names the app rather than the terminal, when the app was opened by launchd (Finder, the Dock,
+  Spotlight). The binary inside the app, run from a terminal, still depends on the terminal's permission.
+- Opening the app again while it runs, or clicking its Dock icon, brings back what it is showing: the picker, the stop
+  panel, or a dialog.
+- Dialogs do not hide when screc is not the active app. A panel normally does, and an app opened from Finder is not
+  always allowed to become active; an error dialog then waited invisibly.
+
+The app is signed with the hardened runtime, which notarization requires, and with the one entitlement it needs under
+it: microphone input. The binary is universal (Apple silicon and Intel).
+
+The icon, `Packaging/AppIcon.icon`, is an Icon Composer document: a background colour and two shapes in SVG, with no
+drawn effects. `actool` compiles it into `Assets.car`, from which macOS 26 and later draw it as Liquid Glass and adapt
+it to the light, dark, tinted and clear appearances, and into `AppIcon.icns` for macOS 15 to 25. The repository holds
+no binary artwork.
+
 ## Code layout
 
 | Target       | Contains                                                                          |
 | ------------ | --------------------------------------------------------------------------------- |
 | `screc`      | `main.swift`, one line that calls `runScrec()`                                    |
-| `ScrecKit`   | Options, choosing what to record, `record()`, and the GUI                         |
+| `ScrecKit`   | Options, settings, choosing what to record, `record()`, and the GUI               |
 | `ScrecMedia` | `MovieWriter` and `mixAudioTracks`, the only code that uses AVAssetWriter/Reader |
 
 `ScrecMedia` is a separate target for one reason. The AVAssetWriter and AVAssetReader methods it uses are deprecated

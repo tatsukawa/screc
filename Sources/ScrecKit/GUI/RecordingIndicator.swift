@@ -10,6 +10,9 @@ import AppKit
 final class RecordingIndicator {
     enum Phase { case starting, recording, saving, saved }
 
+    /// The indicator on screen, if any, so that opening the app again can bring it to the front.
+    static var current: RecordingIndicator?
+
     let panel: NSPanel
     let stopButton = makeCapsuleButton(title: "Stop", symbol: "stop.fill", description: "Stop", width: 84)
     private(set) var phase = Phase.starting
@@ -58,7 +61,7 @@ final class RecordingIndicator {
         clock.textColor = .white
         stopButton.toolTip = "Stop recording and save"
         stopButton.target = self
-        stopButton.action = #selector(stopRequested)
+        stopButton.action = #selector(requestStop)
 
         let row = NSStackView(views: [dot, label, clock, divider, stopButton])
         row.spacing = 10
@@ -98,6 +101,7 @@ final class RecordingIndicator {
         let visible = screen.visibleFrame  // Below the menu bar.
         panel.setFrameOrigin(CGPoint(x: visible.midX - panel.frame.width / 2, y: visible.maxY - panel.frame.height - 12))
         panel.orderFrontRegardless()
+        Self.current = self
     }
 
     /// The recording has started: count the time and offer the stop button.
@@ -119,7 +123,7 @@ final class RecordingIndicator {
         item.button?.imagePosition = .imageLeading
         item.button?.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         item.button?.target = self
-        item.button?.action = #selector(stopRequested)
+        item.button?.action = #selector(requestStop)
         item.button?.toolTip = "Click to stop recording and save"
         statusItem = item
 
@@ -138,7 +142,8 @@ final class RecordingIndicator {
         statusItem?.button?.title = " Stop " + elapsed
     }
 
-    @objc private func stopRequested() {
+    /// Stops the recording, as the Stop button does. Does nothing unless it is recording.
+    @objc func requestStop() {
         guard phase == .recording else { return }
         stopping()
         stop()
@@ -155,6 +160,14 @@ final class RecordingIndicator {
     }
 
     /// The file is saved. Say so, so that the panel does not just vanish.
+    /// Takes the panel off the screen once the recording is over.
+    func dismiss() {
+        panel.orderOut(nil)
+        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
+        statusItem = nil
+        if Self.current === self { Self.current = nil }
+    }
+
     func saved() {
         apply(.saved)
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }

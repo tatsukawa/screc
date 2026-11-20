@@ -15,7 +15,8 @@ import AppKit
 public func runScrec() -> Never {
     let options: Options
     do {
-        options = try Options.parse(Array(CommandLine.arguments.dropFirst()))
+        // Older systems pass a "-psn_…" process serial number to apps opened from Finder; it is not an option.
+        options = try Options.parse(CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-psn_") })
     } catch UsageError.help {
         print(usage)
         exit(0)
