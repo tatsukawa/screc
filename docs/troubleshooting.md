@@ -14,8 +14,9 @@ with every build, and macOS treats the new build as a different app.
 
 ## "screc can't be opened" or "Apple could not verify screc"
 
-The app was built on another Mac and is not signed with an Apple Developer ID. Build it yourself (`make dmg`), or, if
-you trust where it came from, allow it under **System Settings → Privacy & Security** with **Open Anyway**.
+The app was built on another Mac, such as the one that made a release, and is not notarized by Apple. If you trust
+where it came from, click **Done**, then allow it under **System Settings → Privacy & Security** with **Open Anyway**.
+Or build it yourself (`make dmg`); a build made on your own Mac opens without this.
 
 ## macOS asks for access to the Desktop or Documents folder
 

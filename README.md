@@ -25,15 +25,22 @@ picker falls back to a blurred background before macOS 26, but neither has been 
 
 ## Install the app
 
+Download `screc-<version>.dmg` from the [latest release](https://github.com/tatsukawa/screc/releases/latest), open it,
+and drag **screc** onto **Applications**. From then on, open screc like any other app: from Launchpad, Spotlight or
+the Applications folder.
+
+The release is not notarized by Apple, so the first time you open it, macOS refuses ("Apple could not verify…").
+Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about screc, and click
+**Open Anyway**. macOS asks once more; after that, screc opens normally.
+
+Or build it yourself, which needs none of that:
+
 ```sh
 git clone https://github.com/tatsukawa/screc.git
 cd screc
 make dmg
 open build/screc.dmg
 ```
-
-Drag **screc** onto **Applications** in the window that opens. From then on, open screc like any other app: from
-Launchpad, Spotlight or the Applications folder.
 
 screc stays open between recordings, with its icon in the Dock. Start the next recording by clicking the Dock icon,
 with **File → New Recording** (⌘N), or from the Dock icon's menu. While recording, that menu has **Stop Recording**,
@@ -43,11 +50,12 @@ after one recording, or when the picker is cancelled.
 `make app` builds only `build/screc.app`, without the disk image.
 
 The app is signed ad hoc, which is enough on the Mac that built it. On another Mac, macOS refuses to open an app
-downloaded from the internet unless it is signed with an Apple Developer ID and notarized. To distribute screc, build
-it with your own identifier and Developer ID, then notarize the disk image:
+downloaded from the internet unless it is signed with an Apple Developer ID and notarized. To distribute a build of
+your own, give it your own identifier (the default is `io.github.tatsukawa.screc`) and Developer ID, then notarize the
+disk image:
 
 ```sh
-BUNDLE_ID=com.example.screc SIGN_IDENTITY="Developer ID Application: …" make dmg
+BUNDLE_ID=io.github.yourname.screc SIGN_IDENTITY="Developer ID Application: …" make dmg
 ```
 
 Notarization itself (`xcrun notarytool submit build/screc.dmg …`) needs your Apple developer account and is not part

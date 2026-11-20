@@ -5,14 +5,15 @@
 #
 # Settings, from the environment:
 #   VERSION        version shown in Finder (default: 0.1.0)
-#   BUNDLE_ID      bundle identifier (default: local.screc; set your own reverse-DNS name before distributing)
+#   BUNDLE_ID      bundle identifier (default: io.github.tatsukawa.screc; give your own builds your own
+#                  reverse-DNS name if you distribute them)
 #   SIGN_IDENTITY  codesign identity (default: "-", an ad-hoc signature, enough for your own Mac;
 #                  use a "Developer ID Application" identity to distribute, then notarize the DMG)
 set -eu
 cd "$(dirname "$0")/.."
 
 VERSION=${VERSION:-0.1.0}
-BUNDLE_ID=${BUNDLE_ID:-local.screc}
+BUNDLE_ID=${BUNDLE_ID:-io.github.tatsukawa.screc}
 SIGN_IDENTITY=${SIGN_IDENTITY:--}
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 
