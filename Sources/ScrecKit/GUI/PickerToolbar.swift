@@ -34,6 +34,8 @@ final class PickerToolbar: NSView {
     private let caption = NSTextField(labelWithString: "")
     private var positionX: NSLayoutConstraint?
     private var positionY: NSLayoutConstraint?
+    /// The settings the Options menu was built for.
+    private var menuSettings: Preferences?
 
     init(mode: PickMode, microphones: [PickMicrophone]) {
         self.microphones = microphones
@@ -43,7 +45,7 @@ final class PickerToolbar: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// The Options menu as it is now; rebuilt on every `update`.
+    /// The Options menu as it is now; rebuilt when the settings change.
     var optionsMenu: NSMenu? { optionsButton.menu }
 
     // MARK: Building
@@ -177,6 +179,9 @@ final class PickerToolbar: NSView {
         caption.stringValue = text
         recordButton.isEnabled = canRecord
         recordButton.alphaValue = canRecord ? 1 : 0.4
+        // The picker updates on every mouse move; the menu only needs to change with the settings.
+        guard settings != menuSettings else { return }
+        menuSettings = settings
         optionsButton.menu = makeOptionsMenu(settings)
     }
 

@@ -166,9 +166,10 @@ final class RecordingIndicator {
         statusItem?.button?.title = "Saving…"
     }
 
-    /// Takes the panel off the screen once the recording is over.
+    /// Takes the panel off the screen once the recording is over, and closes it: the app may record many times.
     func dismiss() {
-        panel.orderOut(nil)
+        timer?.invalidate()
+        panel.close()
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         statusItem = nil
         if Self.current === self { Self.current = nil }

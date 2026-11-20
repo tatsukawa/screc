@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import ScreenCaptureKit
 import ScrecMedia
@@ -59,24 +60,30 @@ private struct CaptureTarget {
 }
 
 /// Records according to `options` until `control` is told to stop, and returns the file that was written.
-/// Prints a message and exits if recording cannot start or the file cannot be saved.
+///
+/// Throws a `ScrecError` if recording cannot start or the file cannot be saved, and `ScrecError.nothingRecorded` if it
+/// stopped before the first frame. Nothing is left behind in either case, except a finished recording that could not be
+/// moved to its final name; the error says where it is.
 @MainActor
-func record(_ options: Options, control: Control = Control()) async -> URL {
-    let content = await shareableContent()
-    let target = resolveTarget(options, in: content, excluding: control.excludedWindowIDs)
+func record(_ options: Options, control: Control = Control()) async throws -> URL {
+    let content = try await shareableContent()
+    let target = try resolveTarget(options, in: content, excluding: control.excludedWindowIDs)
     let plan = VideoPlan(
         points: target.sourceRect?.size ?? target.filter.contentRect.size,
         pixelScale: CGFloat(target.filter.pointPixelScale),
         options: options)
-    let configuration = makeConfiguration(options, plan: plan, sourceRect: target.sourceRect)
+    let configuration = try makeConfiguration(options, plan: plan, sourceRect: target.sourceRect)
 
-    let output = prepareOutput(for: options)
+    let output = try prepareOutput(for: options)
+    // Cleared once publishing has been tried: from then on, the staged recording is either saved or the only copy.
+    var discardsStaging = true
+    defer { if discardsStaging { output.discard() } }
+
     let movie: MovieWriter
     do {
         movie = try MovieWriter(url: output.recording, settings: plan.movieSettings(for: options))
     } catch {
-        output.discard()
-        fail("cannot create the recording: \(error.localizedDescription)")
+        throw ScrecError("cannot create the recording: \(error.localizedDescription)")
     }
     movie.onFailure = control.reportFailure
     let stream = SCStream(filter: target.filter, configuration: configuration, delegate: movie)
@@ -86,6 +93,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         output.discard()
         exit(130)
     }
+    defer { signals.restore() }
 
     do {
         try stream.addStreamOutput(movie, type: .screen, sampleHandlerQueue: movie.queue)
@@ -93,9 +101,7 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
         if options.mic { try stream.addStreamOutput(movie, type: .microphone, sampleHandlerQueue: movie.queue) }
         try await stream.startCapture()
     } catch {
-        signals.restore()
-        output.discard()
-        fail("cannot start recording: \(error.localizedDescription)")
+        throw ScrecError("cannot start recording: \(error.localizedDescription)")
     }
     let began = Date()
     say("""
@@ -119,7 +125,10 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
     say("■ Stopping… (press Ctrl+C again to abort without saving)")
     try? await stream.stopCapture()  // Throws if the stream has already stopped by itself, which is fine.
     let seconds = Date().timeIntervalSince(began)
-    let saved = await saveRecording(movie, output: output, signals: signals)
+    try await finishRecording(movie, at: output.recording)
+
+    discardsStaging = false
+    let saved = try publish(output, signals: signals)
     let bytes = Double((try? FileManager.default.attributesOfItem(atPath: saved.path)[.size] as? Int) ?? 0)
     say("Saved: \(saved.path)")
     say("  \(formatBytes(bytes)) in \(formatClock(seconds)), about \(formatBytes(bytes / max(seconds, 1) * 3600)) per hour at this rate")
@@ -128,41 +137,46 @@ func record(_ options: Options, control: Control = Control()) async -> URL {
 
 /// Allocates staging only after checking that the destination directory exists.
 @MainActor
-private func prepareOutput(for options: Options) -> OutputFile {
+private func prepareOutput(for options: Options) throws -> OutputFile {
     let destination = destinationURL(for: options)
     let directory = destination.deletingLastPathComponent()
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-        fail("the folder \(directory.path) does not exist")
+        throw ScrecError("the folder \(directory.path) does not exist")
     }
     do {
-        return try OutputFile(destination: destination)
+        // A name screc made up may be taken by a recording made in the same second; one the user gave is refused.
+        return try OutputFile(destination: destination, takingNextFreeName: options.output == nil)
     } catch {
-        fail("\(error)")
+        throw ScrecError("\(error)")
     }
 }
 
-/// Finalizes the staged file before publishing it. A failed mix still leaves a complete recording to publish.
+/// Closes the staged file and mixes its audio. A failed mix still leaves a complete recording to publish.
 @MainActor
-private func saveRecording(_ movie: MovieWriter, output: OutputFile, signals: StopSignals) async -> URL {
+private func finishRecording(_ movie: MovieWriter, at recording: URL) async throws {
     do {
         try await movie.finish()
+    } catch MovieWriterError.noFrames {
+        throw ScrecError.nothingRecorded
     } catch {
-        signals.restore()
-        output.discard()
-        fail("cannot save the recording: \(error.localizedDescription)")
+        throw ScrecError("cannot save the recording: \(error.localizedDescription)")
     }
     do {
-        try await mixAudioTracks(of: output.recording)
+        try await mixAudioTracks(of: recording)
     } catch {
         say("screc: mixing the audio tracks failed, so the microphone stays on a separate track: \(error.localizedDescription)")
     }
+}
 
+/// Moves the finished recording to its final name. If that fails, the recording is kept where it is.
+@MainActor
+private func publish(_ output: OutputFile, signals: StopSignals) throws -> URL {
     let saved: URL
     do {
         saved = try signals.finish { try output.publish() }
     } catch {
-        fail("cannot save the recording as \(output.destination.path): \(error). It is still at \(output.recording.path)")
+        throw ScrecError("cannot save the recording as \(output.destination.path): \(error). It is still at \(output.recording.path)")
     }
     if saved != output.destination {
         say("screc: \(output.destination.lastPathComponent) appeared while recording, so this recording got another name")
@@ -172,22 +186,22 @@ private func saveRecording(_ movie: MovieWriter, output: OutputFile, signals: St
 
 /// Works out what to capture: one window, part of a display, or a whole display.
 @MainActor
-private func resolveTarget(_ options: Options, in content: SCShareableContent, excluding hidden: [CGWindowID]) -> CaptureTarget {
+private func resolveTarget(_ options: Options, in content: SCShareableContent, excluding hidden: [CGWindowID]) throws -> CaptureTarget {
     if let id = options.windowID {
-        guard let window = ordinaryWindows(content).first(where: { $0.windowID == id }) else { fail("the window you picked is no longer on screen") }
+        guard let window = ordinaryWindows(content).first(where: { $0.windowID == id }) else { throw ScrecError("the window you picked is no longer on screen") }
         return windowTarget(window)
     }
     if let query = options.window {
-        return windowTarget(findWindow(query, in: ordinaryWindows(content)))
+        return windowTarget(try findWindow(query, in: ordinaryWindows(content)))
     }
 
     let display: SCDisplay
     if let id = options.displayID {
-        guard let picked = content.displays.first(where: { $0.displayID == id }) else { fail("the display you picked is no longer connected") }
+        guard let picked = content.displays.first(where: { $0.displayID == id }) else { throw ScrecError("the display you picked is no longer connected") }
         display = picked
     } else {
         guard content.displays.indices.contains(options.display) else {
-            fail("there is no display \(options.display); \(content.displays.count) connected (see --list)")
+            throw ScrecError("there is no display \(options.display); \(content.displays.count) connected (see --list)")
         }
         display = content.displays[options.display]
     }
@@ -205,7 +219,7 @@ private func resolveTarget(_ options: Options, in content: SCShareableContent, e
     var sourceRect: CGRect?
     if let region = options.region {
         guard let clipped = recordableRegion(region, in: CGSize(width: display.width, height: display.height)) else {
-            fail("--region lies outside the display (\(display.width)x\(display.height) pt) or is too small")
+            throw ScrecError("--region lies outside the display (\(display.width)x\(display.height) pt) or is too small")
         }
         sourceRect = clipped
         description += ", region \(Int(clipped.minX)),\(Int(clipped.minY)),\(Int(clipped.width)),\(Int(clipped.height))"
@@ -221,7 +235,12 @@ private func windowTarget(_ window: SCWindow) -> CaptureTarget {
 /// current directory unless one was given).
 func destinationURL(for options: Options, now: Date = Date()) -> URL {
     if let output = options.output { return output }
+    // A fixed locale and calendar: with the user's, "yyyy" is the year of their calendar, such as 8 in the Japanese
+    // one, and names would no longer sort by date.
     let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.timeZone = .current
     formatter.dateFormat = "yyyyMMdd-HHmmss"
     let name = "Recording-\(formatter.string(from: now)).mp4"
     if let directory = options.outputDirectory { return directory.appendingPathComponent(name) }
@@ -229,7 +248,7 @@ func destinationURL(for options: Options, now: Date = Date()) -> URL {
 }
 
 @MainActor
-private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: CGRect?) -> SCStreamConfiguration {
+private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: CGRect?) throws -> SCStreamConfiguration {
     let configuration = SCStreamConfiguration()
     configuration.width = plan.width
     configuration.height = plan.height
@@ -240,11 +259,22 @@ private func makeConfiguration(_ options: Options, plan: VideoPlan, sourceRect: 
     configuration.sampleRate = 48_000
     configuration.channelCount = 2
     configuration.captureMicrophone = options.mic
-    if options.mic, let microphone = chooseMicrophone(options.micDevice) {
+    if options.mic, let microphone = try chooseRecordingMicrophone(options) {
         configuration.microphoneCaptureDeviceID = microphone.uniqueID
         say("Microphone: \(printable(microphone.localizedName))" + (isBluetooth(microphone) ? " (Bluetooth: what you hear drops to call quality while recording)" : ""))
     }
     return configuration
+}
+
+/// The microphone `options` ask for. One picked in the Options menu may have been unplugged since; that is reported in
+/// the GUI's own words, rather than as a search for the device's internal ID.
+@MainActor
+private func chooseRecordingMicrophone(_ options: Options) throws -> AVCaptureDevice? {
+    do {
+        return try chooseMicrophone(options.micDevice)
+    } catch where !options.given.contains("--mic-device") {
+        throw ScrecError("the microphone you picked is no longer connected; choose another in Options > Microphone")
+    }
 }
 
 /// Ctrl+C and `kill` while recording.

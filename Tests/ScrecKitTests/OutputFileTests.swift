@@ -35,6 +35,24 @@ final class OutputFileTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file("elsewhere.txt").path), "nothing may be written through the link")
     }
 
+    func testAMadeUpNameThatIsTakenGetsTheNextFreeOne() throws {
+        try Data("first".utf8).write(to: file("Recording-1.mp4"))
+        try FileManager.default.createSymbolicLink(at: file("Recording-1-2.mp4"), withDestinationURL: file("elsewhere.txt"))
+        let output = try OutputFile(destination: file("Recording-1.mp4"), takingNextFreeName: true)
+        XCTAssertEqual(output.destination, file("Recording-1-3.mp4"))
+        try Data("second".utf8).write(to: output.recording)
+        XCTAssertEqual(try output.publish(), file("Recording-1-3.mp4"))
+        XCTAssertEqual(try String(contentsOf: file("Recording-1.mp4"), encoding: .utf8), "first")
+    }
+
+    func testTheNextFreeNameStillFallsBackWhenItIsTakenWhileRecording() throws {
+        try Data("first".utf8).write(to: file("clip.mp4"))
+        let output = try OutputFile(destination: file("clip.mp4"), takingNextFreeName: true)
+        try Data("video".utf8).write(to: output.recording)
+        try Data("someone else's".utf8).write(to: file("clip-2.mp4"))
+        XCTAssertEqual(try output.publish(), file("clip-3.mp4"))
+    }
+
     func testNothingAppearsUnderTheFinalNameUntilPublished() throws {
         let output = try record(to: "clip.mp4")
         XCTAssertFalse(OutputFile.entryExists(at: file("clip.mp4").path))

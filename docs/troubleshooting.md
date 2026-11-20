@@ -57,12 +57,24 @@ show something private. It lists the matching windows with their IDs; give the I
 ## "the window you picked is no longer on screen" or "the display you picked is no longer connected"
 
 Between choosing in the picker and the start of the recording, the window was closed or minimised, or the display was
-disconnected. Start screc again and choose again.
+disconnected. Choose again: the app stays open (File → New Recording, or click its Dock icon). Run from a terminal,
+start screc again.
+
+## "the microphone you picked is no longer connected"
+
+The microphone chosen in Options → Microphone was unplugged or switched off. Connect it, or choose another one (or
+None) in the Options menu.
+
+## "nothing was recorded"
+
+The recording was stopped, or the app quit, before ScreenCaptureKit delivered its first frame. Nothing is saved, and
+nothing is left behind.
 
 ## screc seems to be running, but nothing shows
 
 Click its icon in the Dock, or open it again: it brings back whatever it is showing (the picker, the stop panel or a
-dialog). To quit it, use **Quit** in the Dock icon's menu or ⌘Q; a recording in progress is saved first.
+dialog). To quit it, use **Quit** in the Dock icon's menu or ⌘Q; a recording in progress is saved first, and then
+screc quits.
 
 ## The picker does not respond
 
@@ -77,8 +89,9 @@ display, a point is two pixels. `screc --list` shows each display's size in poin
 
 ## "… already exists"
 
-screc never overwrites a file. Give another output name, or move the old file away. If the name only gets taken while
-recording, the recording is saved under the next free name (`…-2.mp4`), and screc says so.
+screc never overwrites a file. This message only appears for an output file given on the command line: give another
+name, or move the old file away. Names screc makes up (`Recording-<date>-<time>.mp4`) take the next free name
+(`…-2.mp4`) instead, and so does any name that gets taken while recording; screc then says so.
 
 ## "cannot save the recording as …"
 

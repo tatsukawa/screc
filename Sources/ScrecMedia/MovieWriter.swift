@@ -1,6 +1,12 @@
 import AVFoundation
 import ScreenCaptureKit
 
+/// Why a recording could not be finished.
+public enum MovieWriterError: Error, Equatable {
+    /// The stream stopped before its first frame: there is nothing to save.
+    case noFrames
+}
+
 /// Receives the video and audio that an `SCStream` produces and encodes them into an .mp4 file at the requested bitrate.
 public final class MovieWriter: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The queue to pass as `sampleHandlerQueue` when adding this object as a stream output. All state below is only
@@ -70,18 +76,21 @@ public final class MovieWriter: NSObject, SCStreamOutput, SCStreamDelegate {
         queue.async { self.fail(error) }
     }
 
-    /// Closes the file. Call it after the stream has stopped. Throws if nothing could be written or the encoder failed.
+    /// Closes the file. Call it after the stream has stopped. Throws `MovieWriterError.noFrames` if not a single frame
+    /// arrived, and the encoder's error if it failed.
     public func finish() async throws {
-        let writing = queue.sync { () -> Bool in
+        let (wasStarted, writing) = queue.sync { () -> (Bool, Bool) in
             closed = true  // Samples still in flight are ignored from here on.
-            guard started, writer.status == .writing else { return false }
+            guard started, writer.status == .writing else { return (started, false) }
             repeatLastFrame()
             inputs.values.forEach { $0.markAsFinished() }
-            return true
+            return (true, true)
         }
-        guard writing else {
-            throw writer.error ?? NSError(domain: "screc", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not a single video frame arrived"])
+        guard wasStarted else {
+            writer.cancelWriting()
+            throw MovieWriterError.noFrames
         }
+        guard writing else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         await writer.finishWriting()
         if writer.status != .completed { throw writer.error ?? CocoaError(.fileWriteUnknown) }
     }

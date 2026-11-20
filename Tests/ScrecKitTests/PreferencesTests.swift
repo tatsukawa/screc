@@ -121,6 +121,13 @@ final class DestinationTests: XCTestCase {
         XCTAssertEqual(url.pathExtension, "mp4")
     }
 
+    func testTheNameUsesTheGregorianDateWhateverTheUsersCalendar() throws {
+        let name = destinationURL(for: try Options.parse(["--display", "0"]), now: noon).lastPathComponent
+        // 1_800_000_000 is 15 January 2027, 08:00 UTC: the same day everywhere but at the date line.
+        XCTAssertTrue(name.hasPrefix("Recording-202701"), name)
+        XCTAssertNotNil(name.range(of: #"^Recording-\d{8}-\d{6}\.mp4$"#, options: .regularExpression), name)
+    }
+
     func testWithoutEitherTheCurrentDirectoryIsUsed() throws {
         let url = destinationURL(for: try Options.parse(["--display", "0"]), now: noon)
         XCTAssertEqual(url.deletingLastPathComponent().path, FileManager.default.currentDirectoryPath)

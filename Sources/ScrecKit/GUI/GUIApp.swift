@@ -26,13 +26,13 @@ func runGUI(_ options: Options) -> Never {
 
 /// Looks up the displays, windows and microphones and builds a picker for them.
 @MainActor
-private func makePicker(_ options: Options) async -> Picker {
-    let content = await shareableContent()
+private func makePicker(_ options: Options) async throws -> Picker {
+    let content = try await shareableContent()
     let displays = content.displays.enumerated().compactMap { index, display -> PickDisplay? in
         let screen = NSScreen.screens.first { $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID == display.displayID }
         return screen.map { PickDisplay(index: index, id: display.displayID, frame: display.frame, screenFrame: $0.frame, scale: $0.backingScaleFactor) }
     }
-    guard !displays.isEmpty else { fail("no display to record") }
+    guard !displays.isEmpty else { throw ScrecError("no display to record") }
     let windows = ordinaryWindows(content).map { PickWindow(id: $0.windowID, frame: $0.frame) }
 
     // The mouse location is bottom-left-based, so flip it to match the displays.
@@ -43,7 +43,7 @@ private func makePicker(_ options: Options) async -> Picker {
     var options = options
     if !options.given.isDisjoint(with: ["--mic", "--mic-device"]) {
         // Asked for on the command line: resolve it as the command line would, failing if it does not exist.
-        options.micDevice = chooseMicrophone(options.micDevice)?.uniqueID
+        options.micDevice = try chooseMicrophone(options.micDevice)?.uniqueID
     }
     return Picker(
         options: options, displays: displays, windows: windows, microphones: microphones, pointer: pointer, store: Preferences.store)
@@ -103,34 +103,33 @@ final class ScrecAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func stopRecording() { RecordingIndicator.current?.requestStop() }
 
-    /// Quitting while recording saves the recording instead of throwing it away. The quit is cancelled; the user quits
-    /// again once it is saved.
+    /// Lets `applicationShouldTerminate` answer later. Replaced in tests.
+    var replyToTerminate: (Bool) -> Void = { NSApp.reply(toApplicationShouldTerminate: $0) }
+
+    /// Quitting while recording saves the recording instead of throwing it away, and then quits. This includes logging
+    /// out and shutting down, which a cancelled quit would interrupt.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        switch RecordingIndicator.current?.phase {
-        case .starting, .recording:
-            RecordingIndicator.current?.requestStop(duringStartup: true)
-            return .terminateCancel
-        case .saving:
-            return .terminateCancel
-        default:
-            return .terminateNow
-        }
+        guard let session = GUISession.shared, session.state == .recording,
+              let phase = RecordingIndicator.current?.phase, phase != .saved else { return .terminateNow }
+        if phase != .saving { RecordingIndicator.current?.requestStop(duringStartup: true) }
+        let reply = replyToTerminate
+        session.onRecordingEnded = { reply(true) }
+        return .terminateLater
     }
 }
 
 /// Records what was picked while showing the stop panel, then does what the settings say with the file.
 @MainActor
-private func recordAndReveal(_ options: Options) async {
+private func recordAndReveal(_ options: Options) async throws {
     let control = Control()
     control.stopHint = "the Stop button at the top of the screen, or Ctrl+C here"
-    let indicator = RecordingIndicator(stop: control.stop)
+    let indicator = makeIndicator(for: control)
     indicator.prepare()
+    defer { indicator.dismiss() }
     control.excludedWindowIDs = [indicator.windowID]  // Keep the stop panel out of the video.
-    control.onStart = indicator.started
-    control.onStopping = indicator.stopping
     try? await Task.sleep(for: .milliseconds(250))  // Let the picker's overlays disappear from the screen first.
 
-    let output = await record(options, control: control)
+    let output = try await record(options, control: control)
     indicator.saved()
 
     // A convenience, so it is not waited for. `open` rather than NSWorkspace, which logs a pasteboard warning to the
@@ -141,5 +140,16 @@ private func recordAndReveal(_ options: Options) async {
     case .nothing: break
     }
     try? await Task.sleep(for: .milliseconds(1500))  // Show "Saved" for a moment.
-    indicator.dismiss()
+}
+
+/// A stop panel for the recording that `control` runs.
+///
+/// The control holds the panel weakly: the panel holds the control, to stop it, and with both held strongly every stop
+/// panel stayed alive for as long as the app ran.
+@MainActor
+func makeIndicator(for control: Control) -> RecordingIndicator {
+    let indicator = RecordingIndicator(stop: control.stop)
+    control.onStart = { [weak indicator] in indicator?.started() }
+    control.onStopping = { [weak indicator] in indicator?.stopping() }
+    return indicator
 }

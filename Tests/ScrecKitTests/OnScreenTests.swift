@@ -61,21 +61,39 @@ final class OnScreenTests: XCTestCase {
         let app = ScrecAppDelegate.shared
         XCTAssertEqual(app.applicationDockMenu(NSApp)?.items.map(\.title), ["Stop Recording"])
 
-        // Quitting while recording stops and saves instead.
-        XCTAssertEqual(app.applicationShouldTerminate(NSApp), .terminateCancel)
+        let stopItem = try XCTUnwrap(app.applicationDockMenu(NSApp)?.items.first)
+        _ = NSApp.sendAction(try XCTUnwrap(stopItem.action), to: stopItem.target, from: stopItem)
         XCTAssertEqual(stops, 1)
         XCTAssertEqual(indicator.phase, .saving)
         XCTAssertTrue(indicator.stopButton.isHidden)
         XCTAssertNil(app.applicationDockMenu(NSApp), "nothing to stop any more")
-        XCTAssertEqual(app.applicationShouldTerminate(NSApp), .terminateCancel, "it quits by itself once saved")
 
         indicator.stopButton.performClick(nil)
         XCTAssertEqual(stops, 1, "a second click must not stop again")
 
         indicator.saved()
         XCTAssertEqual(indicator.phase, .saved)
-        XCTAssertEqual(app.applicationShouldTerminate(NSApp), .terminateNow)
-        RecordingIndicator.current = nil
+        indicator.dismiss()
+        XCTAssertFalse(indicator.panel.isVisible)
+    }
+
+    func testADismissedStopPanelLeavesNoWindowBehind() throws {
+        try requireOnScreenTests()
+        prepareAppKit()
+        var windowID = CGWindowID(0)
+        weak var panel: NSPanel?
+        autoreleasepool {
+            let indicator = RecordingIndicator {}
+            indicator.prepare()
+            waitUntilOnScreen([indicator.panel])
+            windowID = indicator.windowID
+            panel = indicator.panel
+            indicator.dismiss()
+        }
+        spin()
+        XCTAssertNil(panel, "the app records many times; stop panels must not pile up")
+        let allWindows = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
+        XCTAssertFalse(allWindows.contains { $0[kCGWindowNumber as String] as? CGWindowID == windowID }, "nor their windows")
     }
 
     func testStopPanelSitsBelowTheMenuBarAtTheTopOfTheScreen() throws {

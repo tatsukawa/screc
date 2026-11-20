@@ -123,6 +123,18 @@ final class PickerUITests: XCTestCase {
         XCTAssertFalse(titles.contains("Settings…"), "there is no separate Settings window")
     }
 
+    func testTheMenuIsOnlyRebuiltWhenASettingChanges() throws {
+        let defaults = TemporaryDefaults()
+        let picker = makePicker(store: defaults.store)
+        let menu = try XCTUnwrap(picker.toolbar.optionsMenu)
+        picker.refresh()  // as on every mouse move
+        picker.refresh()
+        XCTAssertTrue(picker.toolbar.optionsMenu === menu)
+        try choose("Desktop", in: picker)
+        XCTAssertFalse(picker.toolbar.optionsMenu === menu)
+        XCTAssertEqual(try menuItem("Desktop", in: picker).state, .on)
+    }
+
     func testTheMenuStartsWithTheDefaults() throws {
         let picker = makePicker()
         for checked in ["Movies", "None", Quality.medium.title, "H.264", "60 fps", "Show Mouse Pointer", "Show in Finder"] {
@@ -302,19 +314,21 @@ final class PickerUITests: XCTestCase {
 
 @MainActor
 final class RecordingIndicatorHeadlessTests: XCTestCase {
-    func testQuittingDuringStartupQueuesOneStopAndDoesNotRestartTheIndicator() {
+    func testAStopPanelIsFreedWithItsRecording() {
         prepareAppKit()
-        var stops = 0
-        let indicator = RecordingIndicator { stops += 1 }
-        RecordingIndicator.current = indicator
-        defer { RecordingIndicator.current = nil }
-        let delegate = ScrecAppDelegate()
-        XCTAssertEqual(delegate.applicationShouldTerminate(NSApp), .terminateCancel)
-        XCTAssertEqual(delegate.applicationShouldTerminate(NSApp), .terminateCancel)
-        XCTAssertEqual(stops, 1)
-        XCTAssertEqual(indicator.phase, .saving)
-        indicator.started()
-        XCTAssertEqual(indicator.phase, .saving)
+        weak var weakIndicator: RecordingIndicator?
+        weak var weakControl: Control?
+        autoreleasepool {
+            let control = Control()
+            let indicator = makeIndicator(for: control)
+            weakIndicator = indicator
+            weakControl = control
+            control.onStopping?()
+            XCTAssertEqual(indicator.phase, .saving, "the recording reaches the panel")
+            indicator.dismiss()
+        }
+        XCTAssertNil(weakIndicator, "the app records many times; stop panels must not pile up")
+        XCTAssertNil(weakControl)
     }
 
     func testStoppingIsIgnoredUntilTheRecordingHasStarted() {

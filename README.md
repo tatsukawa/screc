@@ -132,7 +132,8 @@ Recordings started on the command line use only their options.
 
 Recordings are named `Recording-<date>-<time>.mp4`, and only you can read them. A recording is written elsewhere while
 it is being made and appears under its name only once it is complete. An existing file is never overwritten: if the
-name was taken in the meantime, the recording is saved as `…-2.mp4` instead.
+name is taken, say by another recording made in the same second, the recording is saved as `…-2.mp4` instead. An
+output file given on the command line is never renamed before recording: if it exists, screc refuses to start.
 
 ## Recording from the command line
 

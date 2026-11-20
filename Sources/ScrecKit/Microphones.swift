@@ -17,11 +17,11 @@ func microphones() -> [AVCaptureDevice] {
 /// device and a built-in microphone exists. Using a Bluetooth headset's microphone switches the headset to its low-quality
 /// call mode, which makes everything the user hears sound bad for as long as the recording runs.
 @MainActor
-func chooseMicrophone(_ query: String?) -> AVCaptureDevice? {
+func chooseMicrophone(_ query: String?) throws -> AVCaptureDevice? {
     let all = microphones()
     if let query {
         guard let match = all.first(where: { $0.uniqueID == query }) ?? all.first(where: { $0.localizedName.localizedCaseInsensitiveContains(query) }) else {
-            fail("no microphone matches \"\(query)\" (see --list)")
+            throw ScrecError("no microphone matches \"\(printable(query))\" (see --list)")
         }
         return match
     }

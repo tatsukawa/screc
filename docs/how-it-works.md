@@ -161,7 +161,11 @@ waiting; from a terminal it quits after one recording instead. Running as an app
   like the toolbar of ⌘⇧5, and users could not tell whether screc was running at all. Run from a terminal, it still
   has neither: the terminal shows what is going on.
 - File → New Recording (⌘N), the Dock icon, and the Dock icon's menu start the next recording. That menu offers Stop
-  Recording while recording, and quitting (⌘Q) while recording stops and saves first.
+  Recording while recording, and quitting (⌘Q) while recording stops and saves first, then quits. The quit is
+  answered later (`.terminateLater`) rather than cancelled, so that logging out or shutting down is not interrupted.
+- A recording that fails, say because the window was closed or the microphone unplugged, shows the error and goes back
+  to waiting. `record()` throws a `ScrecError` rather than exiting: the command line prints it and exits with
+  `fail(_:)`, the GUI shows it with `showError(_:)`.
 
 - Errors are also shown in a dialog, since an app opened from Finder has no terminal (`showsFailuresInDialog`). A
   missing screen recording permission offers to open the right pane of System Settings.

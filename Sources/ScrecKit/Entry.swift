@@ -29,7 +29,11 @@ public func runScrec() -> Never {
     if options.gui { runGUI(options) }
 
     Task { @MainActor in
-        if options.list { await listTargets() } else { _ = await record(options) }
+        do {
+            if options.list { try await listTargets() } else { _ = try await record(options) }
+        } catch {
+            fail(error)
+        }
         exit(0)
     }
     dispatchMain()

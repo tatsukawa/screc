@@ -67,7 +67,9 @@ Keep it that way, so that every recording feature works from both.
   (also `--rendition Dark`).
 - Do not open the app (`open build/screc.app`) unasked: it covers the user's screen and may trigger permission
   prompts. Check the bundle with `codesign`, `plutil` and `lipo` instead, and ask the user to try it.
-- Errors for the user go through `fail()`, start in lower case, and point to `--list` when that helps.
+- Errors for the user are thrown as `ScrecError`, start in lower case, and point to `--list` when that helps. Only
+  the command line's entry point calls `fail()`, which exits: the app stays open between
+  recordings, so recording code must never exit. The GUI shows thrown errors with `showError()`.
 - Swift 6 toolchain, Swift 5 language mode (see `Package.swift`). The build should stay free of warnings.
 
 ## Things that broke before
@@ -100,8 +102,8 @@ Each of these was a real bug or trap. Keep the fix, and keep the test where ther
 - **Validate numbers strictly.** `compactMap` once turned `--region 10,typo,20,300,200` into a different region, and
   `--duration inf` crashed the timer after recording had started.
 - **Text from other programs** (window titles, device names) goes through `printable()` before it is printed.
-- **An app opened from Finder has no terminal.** Errors must also reach the user as a dialog (`fail()` does this in the
-  GUI), or the app just disappears.
+- **An app opened from Finder has no terminal.** Errors must also reach the user as a dialog (`fail()` and
+  `showError()` do this in the GUI), or the app just disappears.
 - **A separate Settings window made screc look stuck.** It could end up behind other apps, leaving an app without a
   Dock icon that seemed to run but could not be opened. All settings went into the Options menu instead.
 - **Users could not tell whether the app was running.** It was an agent app (`LSUIElement`) with no Dock icon or
@@ -126,6 +128,19 @@ Each of these was a real bug or trap. Keep the fix, and keep the test where ther
   is not a cap, so it is an estimate.
 - **The app vanished after one recording.** A regular app stays open: `GUISession` goes back to idle after a
   recording or a cancelled picker, and quits only when screc was run from a terminal.
+- **Found in a later review** (each has a test):
+  - Any recording error quit the whole app, since `record()` called `fail()`, which exits. It throws now, and the GUI
+    shows the error and goes back to waiting. Stopping before the first frame is not an error at all
+    (`ScrecError.nothingRecorded`): it saves nothing and shows no dialog.
+  - Quitting while recording cancelled the quit, so the app stayed open after saving, and a logout or shutdown was
+    interrupted. It answers `.terminateLater` and replies once the recording has ended (`GUISession.onRecordingEnded`).
+  - File names used the user's calendar: with the Japanese one, "yyyy" made `Recording-0008…`. The date formatter has a
+    fixed POSIX locale and the Gregorian calendar.
+  - Two recordings in the same second got the same name, and the second refused to start. Names screc makes up take the
+    next free name (`OutputFile(destination:takingNextFreeName:)`); a name given on the command line is still refused.
+  - The Options menu was rebuilt on every mouse move. `PickerToolbar.update` rebuilds it only when the settings change.
+  - Every stop panel stayed alive for as long as the app ran: the panel held its `Control`, and the control held the
+    panel's `started`/`stopping`. `makeIndicator(for:)` lets the control hold the panel weakly.
 
 ## Commits
 

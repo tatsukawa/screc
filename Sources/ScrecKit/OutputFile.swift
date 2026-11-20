@@ -22,17 +22,28 @@ struct OutputFile {
         }
     }
 
+    /// The name the recording is saved under, unless it is taken by then.
     let destination: URL
     /// A directory created for this recording only.
     let staging: URL
+    /// `destination`, then the names to fall back on if it is taken when publishing.
+    private let names: [URL]
 
     /// Where the recording is written while it is being made.
     var recording: URL { staging.appendingPathComponent("recording.mp4") }
 
     /// Reserves a staging directory for a recording that will be saved as `destination`.
-    /// Fails if anything, even a dangling symbolic link, already exists there.
-    init(destination: URL) throws {
-        guard !Self.entryExists(at: destination.path) else { throw Failure.exists(destination.path) }
+    ///
+    /// Fails if anything, even a dangling symbolic link, already exists there; with `takingNextFreeName`, the next free
+    /// name of the form "name-2.mp4" is used instead.
+    init(destination: URL, takingNextFreeName: Bool = false) throws {
+        var names = Self.candidates(for: destination)
+        if takingNextFreeName {
+            guard let free = names.firstIndex(where: { !Self.entryExists(at: $0.path) }) else { throw Failure.exists(destination.path) }
+            names.removeFirst(free)
+        } else if Self.entryExists(at: destination.path) {
+            throw Failure.exists(destination.path)
+        }
         do {
             // A unique directory on the destination's volume, so that publishing is a rename rather than a copy.
             staging = try FileManager.default.url(
@@ -40,7 +51,8 @@ struct OutputFile {
         } catch {
             throw Failure.noStaging(error)
         }
-        self.destination = destination
+        self.names = names
+        self.destination = names[0]
     }
 
     /// Whether anything exists at `path`. Unlike `FileManager.fileExists`, a symbolic link is not followed, so a
@@ -56,7 +68,7 @@ struct OutputFile {
     /// "name-2.mp4" is used. On failure the recording stays in `recording`.
     func publish() throws -> URL {
         guard chmod(recording.path, 0o600) == 0 else { throw posixError() }
-        for candidate in candidates() {
+        for candidate in names {
             // RENAME_EXCL fails instead of replacing an existing entry, atomically.
             if renamex_np(recording.path, candidate.path, UInt32(RENAME_EXCL)) == 0 {
                 discard()
@@ -72,8 +84,8 @@ struct OutputFile {
         try? FileManager.default.removeItem(at: staging)
     }
 
-    /// The destination, then "name-2.ext" up to "name-99.ext".
-    private func candidates() -> [URL] {
+    /// `destination`, then "name-2.ext" up to "name-99.ext".
+    static func candidates(for destination: URL) -> [URL] {
         let directory = destination.deletingLastPathComponent()
         let stem = destination.deletingPathExtension().lastPathComponent
         let suffix = destination.pathExtension.isEmpty ? "" : "." + destination.pathExtension

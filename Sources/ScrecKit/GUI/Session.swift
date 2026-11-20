@@ -19,18 +19,25 @@ final class GUISession {
     private let options: Options
 
     /// Builds a picker for what is on screen now. Replaced in tests.
-    var makePicker: (Options) async -> Picker
+    var makePicker: (Options) async throws -> Picker
     /// Shows or brings forward a picker. Replaced in tests, which must not cover the screen.
     var present: (Picker) -> Void = { picker in
         if picker.overlays.isEmpty { picker.makeOverlays() }
         picker.show()
     }
     /// Records what was picked and does what the settings say with the file.
-    var recordPicked: (Options) async -> Void
-    /// Ends the program. Replaced in tests.
-    var quit: () -> Void = { exit(0) }
+    var recordPicked: (Options) async throws -> Void
+    /// Tells the user why a picker or a recording failed. Replaced in tests.
+    var report: (Error) -> Void = showError
+    /// Ends the program with an exit status. Replaced in tests.
+    var quit: (Int32) -> Void = { exit($0) }
+    /// Called once when the current recording has ended, saved or not. Quitting while recording waits for it.
+    var onRecordingEnded: (() -> Void)?
 
-    init(options: Options, staysOpen: Bool, makePicker: @escaping (Options) async -> Picker, recordPicked: @escaping (Options) async -> Void) {
+    init(
+        options: Options, staysOpen: Bool, makePicker: @escaping (Options) async throws -> Picker,
+        recordPicked: @escaping (Options) async throws -> Void
+    ) {
         self.options = options
         self.staysOpen = staysOpen
         self.makePicker = makePicker
@@ -47,7 +54,15 @@ final class GUISession {
             RecordingIndicator.current?.panel.orderFrontRegardless()
         case .idle:
             state = .choosing
-            Task { @MainActor in open(await makePicker(options)) }
+            Task { @MainActor in
+                do {
+                    open(try await makePicker(options))
+                } catch {
+                    state = .idle
+                    report(error)
+                    ended(failed: true)
+                }
+            }
         }
     }
 
@@ -63,9 +78,18 @@ final class GUISession {
         state = .recording
         dismissPicker()
         Task {
-            await recordPicked(picked)
+            var failed = false
+            do {
+                try await recordPicked(picked)
+            } catch {
+                report(error)
+                failed = (error as? ScrecError)?.kind != .nothingRecorded
+            }
             state = .idle
-            ended()
+            let recordingEnded = onRecordingEnded
+            onRecordingEnded = nil
+            recordingEnded?()
+            ended(failed: failed)
         }
     }
 
@@ -81,7 +105,7 @@ final class GUISession {
     }
 
     /// After a recording or a cancelled picker: an app stays open for the next one; from a terminal, screc is done.
-    private func ended() {
-        if !staysOpen { quit() }
+    private func ended(failed: Bool = false) {
+        if !staysOpen { quit(failed ? 1 : 0) }
     }
 }
