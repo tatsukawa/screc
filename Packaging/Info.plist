@@ -32,7 +32,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>MIT License</string>
+	<string>Copyright © 2026 tatsukawa. MIT License.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>screc records the microphone you choose under Options, mixed with the sound your Mac plays.</string>
 </dict>
